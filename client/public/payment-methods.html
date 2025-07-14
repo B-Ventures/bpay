@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>bPay - Payment Methods</title>
+  <meta name="description" content="Manage your payment methods for funding virtual cards.">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      margin: 0;
+      padding: 0;
+      color: #333;
+      line-height: 1.6;
+      background-color: #f8f9fa;
+    }
+    .navbar {
+      background: linear-gradient(135deg, #1a237e, #283593);
+      color: white;
+      padding: 1rem 0;
+    }
+    .container {
+      width: 90%;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .nav-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo {
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+    .nav-links {
+      display: flex;
+    }
+    .nav-link {
+      color: white;
+      text-decoration: none;
+      margin-left: 1.5rem;
+      font-weight: 500;
+    }
+    .main-content {
+      padding: 2rem 0;
+    }
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+    }
+    .page-title {
+      font-size: 1.8rem;
+      margin-bottom: 0.5rem;
+    }
+    .page-subtitle {
+      color: #666;
+    }
+    .btn {
+      display: inline-block;
+      background: #4CAF50;
+      color: white;
+      text-decoration: none;
+      padding: 0.8rem 1.5rem;
+      border-radius: 4px;
+      font-weight: 600;
+      transition: background-color 0.3s;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .btn:hover {
+      background: #388E3C;
+    }
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #333;
+    }
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+    .methods-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+    .method-card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      padding: 1.5rem;
+      position: relative;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .method-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+    }
+    .method-card-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .method-icon {
+      background: #f5f5f5;
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 1rem;
+      font-size: 1.5rem;
+    }
+    .method-name {
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+    .method-type {
+      color: #666;
+      font-size: 0.9rem;
+      text-transform: capitalize;
+    }
+    .method-details {
+      margin-bottom: 1.5rem;
+    }
+    .method-info-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+      font-size: 0.95rem;
+    }
+    .method-info-label {
+      color: #666;
+    }
+    .method-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+    .method-action-btn {
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      border: none;
+      background: #f5f5f5;
+      color: #333;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background-color 0.3s;
+    }
+    .method-action-btn:hover {
+      background: #e0e0e0;
+    }
+    .method-default-badge {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: #4CAF50;
+      color: white;
+      font-size: 0.8rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+    }
+    
+    /* Modal Styles */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 100;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+    .modal-content {
+      background: white;
+      margin: 10% auto;
+      padding: 2rem;
+      width: 90%;
+      max-width: 500px;
+      border-radius: 8px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+      position: relative;
+    }
+    .modal-close {
+      position: absolute;
+      right: 1.5rem;
+      top: 1rem;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+    .modal-title {
+      margin-top: 0;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid #eee;
+    }
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+    input, select {
+      width: 100%;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    input:focus, select:focus {
+      border-color: #1a237e;
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(26, 35, 126, 0.2);
+    }
+    .form-row {
+      display: flex;
+      gap: 1rem;
+    }
+    .form-col {
+      flex: 1;
+    }
+    .form-actions {
+      margin-top: 2rem;
+      display: flex;
+      justify-content: flex-end;
+      gap: 1rem;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      border: 2px dashed #ddd;
+      border-radius: 8px;
+      color: #666;
+      margin: 2rem 0;
+    }
+    .empty-state-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      color: #ddd;
+    }
+    .empty-state h3 {
+      margin-bottom: 0.5rem;
+    }
+    
+    @media (max-width: 768px) {
+      .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .page-title-container {
+        margin-bottom: 1rem;
+      }
+      .form-row {
+        flex-direction: column;
+        gap: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-content">
+        <div class="logo">bPay</div>
+        <div class="nav-links">
+          <a href="/dashboard" class="nav-link">Dashboard</a>
+          <a href="/payment-methods" class="nav-link">Payment Methods</a>
+          <a href="/api/logout" class="nav-link">Logout</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+  
+  <div class="main-content">
+    <div class="container">
+      <div class="page-header">
+        <div class="page-title-container">
+          <h1 class="page-title">Payment Methods</h1>
+          <p class="page-subtitle">Manage your payment sources for funding virtual cards</p>
+        </div>
+        <button class="btn" id="add-method-button">Add Payment Method</button>
+      </div>
+      
+      <div id="payment-methods-container">
+        <!-- Payment methods will be loaded here -->
+        <div class="empty-state">
+          <div class="empty-state-icon">💳</div>
+          <h3>No Payment Methods Added</h3>
+          <p>Add your first payment method to start creating virtual cards.</p>
+          <button class="btn" onclick="openAddMethodModal()">Add Payment Method</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Add Payment Method Modal -->
+  <div id="add-method-modal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeAddMethodModal()">&times;</span>
+      <h2 class="modal-title">Add Payment Method</h2>
+      
+      <form id="add-method-form">
+        <div class="form-group">
+          <label for="method-type">Payment Method Type</label>
+          <select id="method-type" onchange="togglePaymentFields()">
+            <option value="card">Credit/Debit Card</option>
+            <option value="bank_account">Bank Account</option>
+            <option value="paypal">PayPal Balance</option>
+            <option value="wallet">Digital Wallet</option>
+            <option value="voucher">Voucher/Gift Card</option>
+          </select>
+        </div>
+        
+        <!-- Card Fields -->
+        <div id="card-fields">
+          <div class="form-group">
+            <label for="card-name">Cardholder Name</label>
+            <input type="text" id="card-name" placeholder="Name as it appears on card" required>
+          </div>
+          
+          <div class="form-group">
+            <label for="card-number">Card Number</label>
+            <input type="text" id="card-number" placeholder="1234 5678 9012 3456" required 
+                   maxlength="19" onkeyup="formatCardNumber(this)">
+          </div>
+          
+          <div class="form-row">
+            <div class="form-col">
+              <div class="form-group">
+                <label for="card-expiry">Expiration Date</label>
+                <input type="text" id="card-expiry" placeholder="MM / YY" required 
+                       maxlength="7" onkeyup="formatCardExpiry(this)">
+              </div>
+            </div>
+            <div class="form-col">
+              <div class="form-group">
+                <label for="card-cvv">CVV</label>
+                <input type="text" id="card-cvv" placeholder="123" required maxlength="4">
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Bank Account Fields -->
+        <div id="bank-fields" style="display: none;">
+          <div class="form-group">
+            <label for="bank-name">Bank Name</label>
+            <input type="text" id="bank-name" placeholder="Enter bank name" required>
+          </div>
+          
+          <div class="form-group">
+            <label for="account-name">Account Holder Name</label>
+            <input type="text" id="account-name" placeholder="Account holder name" required>
+          </div>
+          
+          <div class="form-group">
+            <label for="account-number">Account Number</label>
+            <input type="text" id="account-number" placeholder="Account number" required>
+          </div>
+          
+          <div class="form-group">
+            <label for="routing-number">Routing Number</label>
+            <input type="text" id="routing-number" placeholder="Routing number" required>
+          </div>
+        </div>
+        
+        <!-- PayPal Fields -->
+        <div id="paypal-fields" style="display: none;">
+          <div class="form-group">
+            <label for="paypal-email">PayPal Email Address</label>
+            <input type="email" id="paypal-email" placeholder="Enter PayPal email address" required>
+          </div>
+          
+          <div class="form-group">
+            <label for="paypal-name">Account Name</label>
+            <input type="text" id="paypal-name" placeholder="Name on PayPal account" required>
+          </div>
+        </div>
+        
+        <!-- Digital Wallet Fields -->
+        <div id="wallet-fields" style="display: none;">
+          <div class="form-group">
+            <label for="wallet-type">Wallet Provider</label>
+            <select id="wallet-type">
+              <option value="apple">Apple Pay</option>
+              <option value="google">Google Pay</option>
+              <option value="samsung">Samsung Pay</option>
+              <option value="venmo">Venmo</option>
+              <option value="cashapp">Cash App</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          
+          <div class="form-group" id="other-wallet-name" style="display: none;">
+            <label for="wallet-name">Wallet Name</label>
+            <input type="text" id="wallet-name" placeholder="Enter wallet name">
+          </div>
+          
+          <div class="form-group">
+            <label for="wallet-identifier">Wallet Identifier/Email</label>
+            <input type="text" id="wallet-identifier" placeholder="Email or identifier for wallet" required>
+          </div>
+        </div>
+        
+        <!-- Voucher/Gift Card Fields -->
+        <div id="voucher-fields" style="display: none;">
+          <div class="form-group">
+            <label for="voucher-provider">Voucher Provider</label>
+            <input type="text" id="voucher-provider" placeholder="Gift card issuer (e.g., Amazon, Visa)" required>
+          </div>
+          
+          <div class="form-group">
+            <label for="voucher-number">Voucher/Card Number</label>
+            <input type="text" id="voucher-number" placeholder="Enter voucher or gift card number" required>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-col">
+              <div class="form-group">
+                <label for="voucher-pin">PIN (if applicable)</label>
+                <input type="text" id="voucher-pin" placeholder="PIN or security code">
+              </div>
+            </div>
+            <div class="form-col">
+              <div class="form-group">
+                <label for="voucher-balance">Initial Balance</label>
+                <input type="number" id="voucher-balance" placeholder="0.00" step="0.01" min="0">
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="voucher-expiry">Expiration Date (if applicable)</label>
+            <input type="text" id="voucher-expiry" placeholder="MM / YY" maxlength="7" onkeyup="formatCardExpiry(this)">
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="make-default">
+            <input type="checkbox" id="make-default"> Set as default payment method
+          </label>
+        </div>
+        
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeAddMethodModal()">Cancel</button>
+          <button type="submit" class="btn">Add Payment Method</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  
+  <script>
+    // Check if user is authenticated
+    async function checkAuth() {
+      try {
+        const response = await fetch('/api/user');
+        
+        if (!response.ok) {
+          // If not authenticated, redirect to login page
+          window.location.href = '/auth';
+          return null;
+        }
+        
+        return await response.json();
+      } catch (error) {
+        console.error('Auth check failed', error);
+        window.location.href = '/auth';
+        return null;
+      }
+    }
+    
+    // Load payment methods
+    async function loadPaymentMethods() {
+      try {
+        const response = await fetch('/api/payment-methods');
+        
+        if (!response.ok) {
+          throw new Error('Failed to load payment methods');
+        }
+        
+        const paymentMethods = await response.json();
+        const container = document.getElementById('payment-methods-container');
+        
+        if (paymentMethods.length === 0) {
+          return; // Keep the empty state visible
+        }
+        
+        // Clear empty state
+        container.innerHTML = '';
+        
+        // Create grid container for payment methods
+        const methodsGrid = document.createElement('div');
+        methodsGrid.className = 'methods-container';
+        container.appendChild(methodsGrid);
+        
+        // Add each payment method
+        paymentMethods.forEach(method => {
+          const methodElement = document.createElement('div');
+          methodElement.className = 'method-card';
+          
+          // Set icon and type name based on payment method type
+          let icon = '💳';
+          let typeName = 'Credit Card';
+          
+          switch(method.type) {
+            case 'bank_account':
+              icon = '🏦';
+              typeName = 'Bank Account';
+              break;
+            case 'paypal':
+              icon = '💰';
+              typeName = 'PayPal';
+              break;
+            case 'wallet':
+              icon = '👛';
+              typeName = 'Digital Wallet';
+              break;
+            case 'voucher':
+              icon = '🎫';
+              typeName = 'Voucher/Gift Card';
+              break;
+          }
+          
+          // If this is a default method, add a badge
+          if (method.isDefault) {
+            methodElement.innerHTML += `<div class="method-default-badge">Default</div>`;
+          }
+          
+          methodElement.innerHTML += `
+            <div class="method-card-header">
+              <div class="method-icon">${icon}</div>
+              <div>
+                <div class="method-name">${method.name || method.card.brand}</div>
+                <div class="method-type">${typeName}</div>
+              </div>
+            </div>
+            <div class="method-details">
+              ${method.card ? `
+                <div class="method-info-row">
+                  <div class="method-info-label">Card Number</div>
+                  <div>**** **** **** ${method.card.last4}</div>
+                </div>
+                <div class="method-info-row">
+                  <div class="method-info-label">Expires</div>
+                  <div>${method.card.exp_month}/${method.card.exp_year}</div>
+                </div>
+              ` : ''}
+              
+              ${method.type === 'bank_account' ? `
+                <div class="method-info-row">
+                  <div class="method-info-label">Bank Name</div>
+                  <div>${method.bankName}</div>
+                </div>
+                <div class="method-info-row">
+                  <div class="method-info-label">Account</div>
+                  <div>**** ${method.accountLastFour}</div>
+                </div>
+              ` : ''}
+              
+              ${method.type === 'paypal' ? `
+                <div class="method-info-row">
+                  <div class="method-info-label">PayPal Account</div>
+                  <div>${method.paypalEmail}</div>
+                </div>
+                <div class="method-info-row">
+                  <div class="method-info-label">Account Name</div>
+                  <div>${method.paypalName}</div>
+                </div>
+              ` : ''}
+              
+              ${method.type === 'wallet' ? `
+                <div class="method-info-row">
+                  <div class="method-info-label">Wallet Type</div>
+                  <div>${method.walletType === 'other' ? method.name : method.name}</div>
+                </div>
+                <div class="method-info-row">
+                  <div class="method-info-label">Identifier</div>
+                  <div>${method.walletIdentifier.substring(0, 4)}...${method.accountLastFour}</div>
+                </div>
+              ` : ''}
+              
+              ${method.type === 'voucher' ? `
+                <div class="method-info-row">
+                  <div class="method-info-label">Provider</div>
+                  <div>${method.voucherProvider}</div>
+                </div>
+                <div class="method-info-row">
+                  <div class="method-info-label">Number</div>
+                  <div>**** ${method.accountLastFour}</div>
+                </div>
+                ${method.balance ? `
+                <div class="method-info-row">
+                  <div class="method-info-label">Balance</div>
+                  <div>$${method.balance.toFixed(2)}</div>
+                </div>
+                ` : ''}
+                ${method.expiryDate ? `
+                <div class="method-info-row">
+                  <div class="method-info-label">Expires</div>
+                  <div>${method.expiryDate}</div>
+                </div>
+                ` : ''}
+              ` : ''}
+              
+              <div class="method-info-row">
+                <div class="method-info-label">Added On</div>
+                <div>${new Date(method.created || Date.now()).toLocaleDateString()}</div>
+              </div>
+            </div>
+            <div class="method-actions">
+              <button class="method-action-btn" onclick="setDefaultMethod('${method.id}')">
+                Make Default
+              </button>
+              <button class="method-action-btn" onclick="deleteMethod('${method.id}')">
+                Delete
+              </button>
+            </div>
+          `;
+          
+          methodsGrid.appendChild(methodElement);
+        });
+      } catch (error) {
+        console.error('Error loading payment methods', error);
+      }
+    }
+    
+    // Toggle between different payment method fields
+    function togglePaymentFields() {
+      const methodType = document.getElementById('method-type').value;
+      const cardFields = document.getElementById('card-fields');
+      const bankFields = document.getElementById('bank-fields');
+      const paypalFields = document.getElementById('paypal-fields');
+      const walletFields = document.getElementById('wallet-fields');
+      const voucherFields = document.getElementById('voucher-fields');
+      
+      // Hide all fields first
+      cardFields.style.display = 'none';
+      bankFields.style.display = 'none';
+      paypalFields.style.display = 'none';
+      walletFields.style.display = 'none';
+      voucherFields.style.display = 'none';
+      
+      // Show only the relevant fields
+      switch(methodType) {
+        case 'card':
+          cardFields.style.display = 'block';
+          break;
+        case 'bank_account':
+          bankFields.style.display = 'block';
+          break;
+        case 'paypal':
+          paypalFields.style.display = 'block';
+          break;
+        case 'wallet':
+          walletFields.style.display = 'block';
+          break;
+        case 'voucher':
+          voucherFields.style.display = 'block';
+          break;
+      }
+    }
+    
+    // Show/hide other wallet name field when "Other" is selected
+    document.getElementById('wallet-type').addEventListener('change', function() {
+      const walletType = this.value;
+      const otherWalletField = document.getElementById('other-wallet-name');
+      
+      if (walletType === 'other') {
+        otherWalletField.style.display = 'block';
+      } else {
+        otherWalletField.style.display = 'none';
+      }
+    });
+    
+    // Format card number input with spaces
+    function formatCardNumber(input) {
+      let value = input.value.replace(/\D/g, '');
+      let formattedValue = '';
+      
+      for (let i = 0; i < value.length; i++) {
+        if (i > 0 && i % 4 === 0) {
+          formattedValue += ' ';
+        }
+        formattedValue += value[i];
+      }
+      
+      input.value = formattedValue;
+    }
+    
+    // Format card expiry date as MM / YY
+    function formatCardExpiry(input) {
+      let value = input.value.replace(/\D/g, '');
+      let formattedValue = '';
+      
+      if (value.length > 0) {
+        formattedValue = value.substring(0, 2);
+        if (value.length > 2) {
+          formattedValue += ' / ' + value.substring(2, 4);
+        }
+      }
+      
+      input.value = formattedValue;
+    }
+    
+    // Open the add method modal
+    function openAddMethodModal() {
+      document.getElementById('add-method-modal').style.display = 'block';
+    }
+    
+    // Close the add method modal
+    function closeAddMethodModal() {
+      document.getElementById('add-method-modal').style.display = 'none';
+      document.getElementById('add-method-form').reset();
+    }
+    
+    // Set a payment method as default
+    async function setDefaultMethod(methodId) {
+      try {
+        const response = await fetch(`/api/payment-methods/${methodId}/set-default`, {
+          method: 'POST'
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to set default payment method');
+        }
+        
+        // Reload payment methods
+        loadPaymentMethods();
+      } catch (error) {
+        console.error('Error setting default payment method', error);
+        alert('Failed to set default payment method: ' + error.message);
+      }
+    }
+    
+    // Delete a payment method
+    async function deleteMethod(methodId) {
+      if (!confirm('Are you sure you want to delete this payment method?')) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/api/payment-methods/${methodId}`, {
+          method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to delete payment method');
+        }
+        
+        // Reload payment methods
+        loadPaymentMethods();
+      } catch (error) {
+        console.error('Error deleting payment method', error);
+        alert('Failed to delete payment method: ' + error.message);
+      }
+    }
+    
+    // Handle form submission for adding a payment method
+    async function handleAddMethodSubmit(event) {
+      event.preventDefault();
+      
+      const methodType = document.getElementById('method-type').value;
+      const makeDefault = document.getElementById('make-default').checked;
+      
+      let paymentMethodData = {
+        type: methodType,
+        isDefault: makeDefault
+      };
+      
+      switch(methodType) {
+        case 'card':
+          // Get card details
+          const cardName = document.getElementById('card-name').value;
+          const cardNumber = document.getElementById('card-number').value.replace(/\D/g, '');
+          const cardExpiry = document.getElementById('card-expiry').value;
+          const cardCvv = document.getElementById('card-cvv').value;
+          
+          // Parse expiry date
+          const [expMonth, expYear] = cardExpiry.split('/').map(part => part.trim());
+          
+          paymentMethodData = {
+            ...paymentMethodData,
+            name: cardName,
+            card: {
+              number: cardNumber,
+              exp_month: parseInt(expMonth, 10),
+              exp_year: parseInt(expYear, 10) + 2000, // Convert 2-digit year to 4-digit
+              cvc: cardCvv
+            }
+          };
+          break;
+          
+        case 'bank_account':
+          // Get bank account details
+          const bankName = document.getElementById('bank-name').value;
+          const accountName = document.getElementById('account-name').value;
+          const accountNumber = document.getElementById('account-number').value;
+          const routingNumber = document.getElementById('routing-number').value;
+          
+          paymentMethodData = {
+            ...paymentMethodData,
+            name: bankName,
+            bankName,
+            accountName,
+            accountNumber,
+            routingNumber,
+            accountLastFour: accountNumber.slice(-4)
+          };
+          break;
+          
+        case 'paypal':
+          // Get PayPal details
+          const paypalEmail = document.getElementById('paypal-email').value;
+          const paypalName = document.getElementById('paypal-name').value;
+          
+          paymentMethodData = {
+            ...paymentMethodData,
+            name: 'PayPal',
+            paypalEmail,
+            paypalName,
+            accountLastFour: paypalEmail.slice(-4)
+          };
+          break;
+          
+        case 'wallet':
+          // Get wallet details
+          const walletType = document.getElementById('wallet-type').value;
+          const walletIdentifier = document.getElementById('wallet-identifier').value;
+          
+          let walletName = walletType;
+          if (walletType === 'other') {
+            walletName = document.getElementById('wallet-name').value;
+          } else {
+            // Format wallet name (convert 'apple' to 'Apple Pay')
+            const walletNames = {
+              'apple': 'Apple Pay',
+              'google': 'Google Pay',
+              'samsung': 'Samsung Pay',
+              'venmo': 'Venmo',
+              'cashapp': 'Cash App'
+            };
+            walletName = walletNames[walletType] || walletType;
+          }
+          
+          paymentMethodData = {
+            ...paymentMethodData,
+            name: walletName,
+            walletType,
+            walletIdentifier,
+            accountLastFour: walletIdentifier.slice(-4)
+          };
+          break;
+          
+        case 'voucher':
+          // Get voucher details
+          const voucherProvider = document.getElementById('voucher-provider').value;
+          const voucherNumber = document.getElementById('voucher-number').value;
+          const voucherPin = document.getElementById('voucher-pin').value;
+          const voucherBalance = document.getElementById('voucher-balance').value;
+          const voucherExpiry = document.getElementById('voucher-expiry').value;
+          
+          paymentMethodData = {
+            ...paymentMethodData,
+            name: `${voucherProvider} Voucher`,
+            voucherProvider,
+            voucherNumber,
+            voucherPin,
+            balance: voucherBalance ? parseFloat(voucherBalance) : null,
+            expiryDate: voucherExpiry || null,
+            accountLastFour: voucherNumber.slice(-4)
+          };
+          break;
+      }
+      
+      try {
+        const response = await fetch('/api/payment-methods', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(paymentMethodData)
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to add payment method');
+        }
+        
+        // Close modal and reload methods
+        closeAddMethodModal();
+        loadPaymentMethods();
+      } catch (error) {
+        console.error('Error adding payment method', error);
+        alert('Failed to add payment method: ' + error.message);
+      }
+    }
+    
+    // Initialize the page
+    async function initPage() {
+      const user = await checkAuth();
+      
+      if (user) {
+        // Load payment methods
+        await loadPaymentMethods();
+        
+        // Set up event listeners
+        document.getElementById('add-method-button').addEventListener('click', openAddMethodModal);
+        document.getElementById('add-method-form').addEventListener('submit', handleAddMethodSubmit);
+        
+        // Close modal when clicking outside
+        window.addEventListener('click', function(event) {
+          const modal = document.getElementById('add-method-modal');
+          if (event.target === modal) {
+            closeAddMethodModal();
+          }
+        });
+      }
+    }
+    
+    // Start the page when DOM is loaded
+    window.addEventListener('DOMContentLoaded', initPage);
+  </script>
+</body>
+</html>

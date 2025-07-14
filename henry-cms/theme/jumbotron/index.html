@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="{{ $HERNYO['site']['language']; }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="{{ $HERNYO['site']['site_description']; }}" />
+    <meta name="keywords" content="{{ $HERNYO['site']['site_keywords']; }}" />
+    <meta name="author" content="Hernyo" />
+    <title>{{ $HERNYO['site']['site_title'] }}</title>
+    <link rel="icon" href="theme/{{ $HERNYO['site']['theme']; }}/logo.png">
+
+    <!-- Bootstrap core CSS -->
+    <link href="theme/{{ $HERNYO['site']['theme']; }}/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Custom styles for this template -->
+    <link href="theme/{{ $HERNYO['site']['theme']; }}/css/jumbotron.css" rel="stylesheet">
+  </head>
+
+  <body>
+
+    <nav class="navbar navbar-expand-md navbar-dark fixed-top bg-dark">
+      <a class="navbar-brand" href="{{ $HERNYO['site']['path'] }}">{{ $HERNYO['site']['site_title'] }}</a>
+      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExampleDefault" aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="navbarsExampleDefault">
+        <ul class="navbar-nav mr-auto">
+	<?php if ( !empty($HERNYO['pages']) ) : foreach( $HERNYO['pages'] as $page ) : ?>
+	      <li {{ ($page['slug'] == $HERNYO['page']['slug']) ? ' class="active"' : 'class="nav-item"' }}>
+	            <a class="nav-link" href="{{ $page['link'] }}" title="{{ $page['title'] }}">{{ $page['title'] }}</a>
+              </li>
+	<?php endforeach; endif; ?>
+	</ul>
+      </div>
+    </nav>
+
+    <!-- Main jumbotron for a primary marketing message or call to action -->
+    <div class="jumbotron">
+      <div class="container">
+        <h1 class="display-3">{{ $HERNYO['page']['title'] }}</h1>
+        <?php if($HERNYO['page']['description']) : ?><p>{{ $HERNYO['page']['description'] }}</p><?php endif; ?>
+        <p><a href="https://demo.hernyo.com" class="btn btn-primary btn-lg" role="button">View Demo</a></p>
+      </div>
+    </div>
+
+    <div class="container">
+      <!-- Example row of columns -->
+      <div class="row">
+        <div class="col-md-12">
+          {{ $HERNYO['page']['content'] }}
+        </div>
+      </div>
+
+      <hr>
+
+      <footer>
+        <p>&copy; 2017 <a href="http://hernyo.com" title="Hernyo. Lightweight flat file CMS">Hernyo CMS v.{{ $HERNYO['version'] }}</a>. All Rights Reserved.</p>
+      </footer>
+    </div> <!-- /container -->
+
+
+    <!-- Bootstrap core JavaScript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script>window.jQuery || document.write('<script src="theme/{{ $HERNYO['site']['theme']; }}/js/jquery-slim.min.js"><\/script>')</script>
+    <script src="theme/{{ $HERNYO['site']['theme']; }}/js/popper.min.js"></script>
+    <script src="theme/{{ $HERNYO['site']['theme']; }}/js/bootstrap.min.js"></script>
+    <!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
+    <script src="theme/{{ $HERNYO['site']['theme']; }}/js/ie10-viewport-bug-workaround.js"></script>
+  </body>
+</html>

@@ -1,0 +1,315 @@
+/**
+ * getBPay WooCommerce Checkout Styles
+ */
+
+/* Main checkout button */
+.getbpay-checkout-button-container {
+    margin: 20px 0;
+}
+
+.getbpay-checkout-button {
+    background-color: #3B82F6 !important;
+    color: white !important;
+    padding: 14px 20px !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    display: block;
+    width: 100%;
+    text-align: center;
+    border: none !important;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.getbpay-checkout-button:hover {
+    background-color: #2563EB !important;
+}
+
+/* Modal styles */
+.getbpay-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.getbpay-modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.getbpay-modal-container {
+    position: relative;
+    width: 100%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+}
+
+.getbpay-modal-header {
+    padding: 20px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.getbpay-modal-header h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0;
+    color: #1e293b;
+}
+
+.getbpay-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    color: #64748b;
+}
+
+.getbpay-modal-body {
+    padding: 20px;
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.getbpay-modal-footer {
+    padding: 15px 20px;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.getbpay-modal-footer button {
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.getbpay-modal-cancel {
+    background-color: #f1f5f9;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+}
+
+.getbpay-modal-submit {
+    background-color: #3B82F6;
+    color: white;
+    border: none;
+}
+
+.getbpay-modal-submit:disabled {
+    background-color: #cbd5e1;
+    cursor: not-allowed;
+}
+
+.getbpay-modal-close-success {
+    background-color: #3B82F6;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+/* Order summary section */
+.getbpay-order-summary {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.getbpay-order-summary h3,
+.getbpay-payment-allocation h3,
+.getbpay-virtual-card-name h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 10px 0;
+    color: #334155;
+}
+
+.getbpay-order-amount {
+    display: flex;
+    justify-content: space-between;
+    font-size: 1.1rem;
+}
+
+.getbpay-payment-allocation {
+    margin-bottom: 24px;
+}
+
+.getbpay-helper-text {
+    font-size: 0.9rem;
+    color: #64748b;
+    margin: 0 0 16px 0;
+}
+
+/* Payment methods section */
+.getbpay-payment-methods {
+    margin-bottom: 16px;
+}
+
+.getbpay-payment-method {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    transition: border-color 0.3s;
+}
+
+.getbpay-payment-method:hover {
+    border-color: #3B82F6;
+}
+
+.getbpay-method-details {
+    flex-grow: 1;
+}
+
+.getbpay-method-name {
+    font-weight: 500;
+    color: #1e293b;
+}
+
+.getbpay-method-balance {
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.getbpay-method-amount {
+    min-width: 120px;
+}
+
+.getbpay-amount-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.getbpay-method-checkbox {
+    margin: 0;
+}
+
+.getbpay-method-amount-input {
+    width: 90px;
+    padding: 6px 8px;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    text-align: right;
+}
+
+.getbpay-allocation-summary {
+    background-color: #f8fafc;
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 16px;
+}
+
+.getbpay-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.getbpay-row:last-child {
+    margin-bottom: 0;
+    font-weight: 600;
+}
+
+/* Virtual card name section */
+.getbpay-virtual-card-name {
+    margin-bottom: 16px;
+}
+
+#getbpay-card-name {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+}
+
+/* Loading, processing and success states */
+.getbpay-loading, .getbpay-no-methods {
+    padding: 30px;
+    text-align: center;
+    color: #64748b;
+}
+
+.getbpay-processing {
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.getbpay-spinner {
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(59, 130, 246, 0.2);
+    border-radius: 50%;
+    border-top-color: #3B82F6;
+    animation: getbpay-spin 1s linear infinite;
+    margin-bottom: 16px;
+}
+
+@keyframes getbpay-spin {
+    to { transform: rotate(360deg); }
+}
+
+.getbpay-success {
+    padding: 30px 20px;
+    text-align: center;
+}
+
+.getbpay-success-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 60px;
+    margin: 0 auto 20px;
+    border-radius: 50%;
+    background-color: #22c55e;
+    color: white;
+    font-size: 30px;
+}
+
+.getbpay-card-details {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f8fafc;
+    border-radius: 8px;
+    text-align: left;
+}
+
+.getbpay-error {
+    background-color: #fee2e2;
+    color: #b91c1c;
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    text-align: center;
+}

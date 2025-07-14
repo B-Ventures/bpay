@@ -1,0 +1,153 @@
+@import url(icomoon-icons.css);
+@import url(themify-icons.css);
+@import url(https://fonts.googleapis.com/css?family=Merriweather+Sans:700|Muli:300,400|Inconsolata:400);
+
+/*! hernyo.css - MIT License - http://hernyo.com */
+/* colours */
+.black {
+  color: #000; }
+
+.blue {
+  color: #0074d9; }
+
+.green {
+  color: #38b248; }
+
+.olive {
+  color: #3D9970; }
+
+.purple {
+  color: #813282; }
+
+.yellow {
+  color: #ffdc00; }
+  
+.orange {
+  color: #f1bf2f; }
+
+.red {
+  color: #ed1a3b; }
+
+.orange {
+  color: #f96332; }
+
+.gray {
+  color: #AAAAAA; }
+
+html {
+  position: relative;
+  min-height: 100%;
+}
+body {
+  /* Margin bottom by footer height */
+  color: #464a4e;
+  margin-bottom: 60px;
+  background-color: rgba(227, 225, 225, 0.15);
+}
+.footer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  /* Set the fixed height of the footer here */
+  height: 65px;
+  text-align: center;
+  background-color: #818182;
+  box-shadow: 0px -3px 20px 0px rgba(0, 0, 0, 0.15);
+}
+.footer a {
+    color: #333;
+}
+a {
+    color: #17a2b8;
+}
+a:hover {
+  text-decoration: none;
+}
+
+/* Custom page CSS
+-------------------------------------------------- */
+/* Not required for template or sticky footer method. */
+
+body > .container {
+  padding: 80px 15px 15px;
+}
+.footer > .container {
+  padding-top: 15px;
+  color: whitesmoke;
+}
+code {
+  font-size: 80%;
+}
+.form-control {
+  border-radius: 1.5rem;
+  font-size: .9rem;
+  border: 1px solid rgba(169, 169, 169, 0.15);
+}
+.btn {
+    border-radius: 1.5rem;
+}
+.btn-success {
+    color: #fff;
+    background-color: #65a728;
+    border-color: #65a728;
+}
+.bg-primary {
+    background-color: #818182!important;
+}
+.bg-dark {
+    background-color: #007bff!important;
+}
+.navbar {
+    padding: .8rem 1rem;
+    box-shadow: 0px 3px 20px 0px rgba(0, 0, 0, 0.15);
+}
+a.navbar-brand {
+    font-size: 1.5rem
+}
+span.icon-logo {
+    font-size: 1.7rem
+}
+.navbar-brand {
+    margin-right: 4rem;
+}
+.card-header:first-child {
+    border-radius: calc(1rem - 1px) calc(1rem - 1px) 0 0;
+}
+.card {
+    border-radius: 1rem;
+    border: 1px solid rgba(169, 169, 169, 0.15);
+    /*box-shadow: 0px 0px 20px 0px rgba(0, 0, 0, 0.15);*/
+}
+span[class^="icon-"], span[class^="ti-"] {
+    padding: 10px;
+    height: 25px;
+    width: 25px;
+    font-weight: 400;
+    background-color: rgba(222, 222, 222, 0.37);
+    border-radius: 25px;
+    /*box-shadow: 0px 5px 35px 0px rgba(0, 0, 0, 0.3);*/
+}
+label {
+    margin: .5rem;
+    line-height: 2.5rem;
+}
+label.custom-control.custom-checkbox {
+    line-height: 1.5rem;
+}
+.h3, h3 {
+    font-size: 1.5rem;
+    /*background-color: #f96332;*/
+    padding-top: 20px;
+    /*color: #FFFFFF;*/
+    height: 4rem;
+    /* border-radius: 3.5rem; */
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(0,0,0,.075);
+    /* box-shadow: 0px 3px 17px 0px rgba(0, 0, 0, 0.3); */
+}
+.thead-inverse th {
+      background-color: #818182!important;
+}
+kbd {
+    background-color: rgba(220, 53, 69, 0.69);
+}

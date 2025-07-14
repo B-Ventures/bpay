@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200" height="60" viewBox="0 0 200 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background and styling elements -->
+  <rect width="200" height="60" rx="8" fill="#3B82F6" />
+  <path d="M10 10 L180 10 L190 50 L20 50 Z" fill="#2563EB" opacity="0.5" />
+  
+  <!-- Text elements -->
+  <text x="35" y="38" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="white">getBPay</text>
+  
+  <!-- Icon elements representing payment cards -->
+  <g transform="translate(180, 22) rotate(10)">
+    <rect width="30" height="20" rx="3" fill="#60A5FA" stroke="white" stroke-width="1" />
+  </g>
+  <g transform="translate(175, 20) rotate(5)">
+    <rect width="30" height="20" rx="3" fill="#93C5FD" stroke="white" stroke-width="1" />
+  </g>
+  <g transform="translate(170, 18) rotate(0)">
+    <rect width="30" height="20" rx="3" fill="#BFDBFE" stroke="white" stroke-width="1" />
+  </g>
+</svg>

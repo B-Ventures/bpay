@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>bPay - Dashboard</title>
+  <meta name="description" content="Manage your virtual cards and payment sources.">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      margin: 0;
+      padding: 0;
+      color: #333;
+      line-height: 1.6;
+      background-color: #f8f9fa;
+    }
+    .navbar {
+      background: linear-gradient(135deg, #1a237e, #283593);
+      color: white;
+      padding: 1rem 0;
+    }
+    .container {
+      width: 90%;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .nav-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo {
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+    .nav-links {
+      display: flex;
+    }
+    .nav-link {
+      color: white;
+      text-decoration: none;
+      margin-left: 1.5rem;
+      font-weight: 500;
+    }
+    .main-content {
+      padding: 2rem 0;
+    }
+    .dashboard-header {
+      margin-bottom: 2rem;
+    }
+    .dashboard-title {
+      font-size: 1.8rem;
+      margin-bottom: 0.5rem;
+    }
+    .dashboard-subtitle {
+      color: #666;
+    }
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+      margin-bottom: 3rem;
+    }
+    .dashboard-card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      padding: 1.5rem;
+    }
+    .dashboard-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid #eee;
+    }
+    .dashboard-card-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0;
+    }
+    .dashboard-card-action {
+      color: #1a237e;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .dashboard-card-action:hover {
+      text-decoration: underline;
+    }
+    .virtual-card {
+      background: linear-gradient(135deg, #1a237e, #2196f3);
+      color: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .virtual-card.inactive {
+      background: linear-gradient(135deg, #455a64, #78909c);
+      opacity: 0.85;
+    }
+    
+    .virtual-card.one-time::after {
+      content: "ONE-TIME";
+      position: absolute;
+      top: 10px;
+      right: -30px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      padding: 2px 30px;
+      font-size: 0.6rem;
+      transform: rotate(45deg);
+      font-weight: bold;
+    }
+    .virtual-card-name {
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+    }
+    .virtual-card-number {
+      font-family: monospace;
+      font-size: 1.1rem;
+      letter-spacing: 2px;
+      margin-bottom: 1rem;
+    }
+    .virtual-card-details {
+      display: flex;
+      justify-content: space-between;
+    }
+    .virtual-card-balance {
+      font-weight: bold;
+      margin-top: 1rem;
+    }
+    .payment-method {
+      display: flex;
+      align-items: center;
+      padding: 1rem;
+      border: 1px solid #eee;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+    .payment-method-icon {
+      background: #f5f5f5;
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 1rem;
+      font-size: 1.5rem;
+    }
+    .payment-method-details {
+      flex: 1;
+    }
+    .payment-method-name {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .payment-method-info {
+      color: #666;
+      font-size: 0.9rem;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      border: 2px dashed #ddd;
+      border-radius: 8px;
+      color: #666;
+    }
+    .empty-state-icon {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      color: #ddd;
+    }
+    .btn {
+      display: inline-block;
+      background: #4CAF50;
+      color: white;
+      text-decoration: none;
+      padding: 0.8rem 1.5rem;
+      border-radius: 4px;
+      font-weight: 600;
+      transition: background-color 0.3s;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .btn:hover {
+      background: #388E3C;
+    }
+    .btn-outline {
+      background: transparent;
+      border: 2px solid #1a237e;
+      color: #1a237e;
+    }
+    .btn-outline:hover {
+      background: rgba(26, 35, 126, 0.1);
+    }
+    .btn-block {
+      display: block;
+      width: 100%;
+      text-align: center;
+    }
+    .recent-transactions {
+      margin-top: 2rem;
+    }
+    .transaction-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .transaction-table th {
+      text-align: left;
+      padding: 1rem;
+      border-bottom: 2px solid #eee;
+      font-weight: 600;
+    }
+    .transaction-table td {
+      padding: 1rem;
+      border-bottom: 1px solid #eee;
+    }
+    .transaction-amount {
+      font-weight: 600;
+    }
+    .transaction-positive {
+      color: #4CAF50;
+    }
+    .transaction-negative {
+      color: #F44336;
+    }
+    
+    @media (max-width: 768px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-content">
+        <div class="logo">bPay</div>
+        <div class="nav-links">
+          <a href="/dashboard" class="nav-link">Dashboard</a>
+          <a href="/payment-methods" class="nav-link">Payment Methods</a>
+          <a href="/api/logout" class="nav-link">Logout</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+  
+  <div class="main-content">
+    <div class="container">
+      <div class="dashboard-header">
+        <h1 class="dashboard-title">Dashboard</h1>
+        <p class="dashboard-subtitle">Manage your virtual cards and payment sources.</p>
+      </div>
+      
+      <div class="dashboard-grid">
+        <div class="dashboard-card">
+          <div class="dashboard-card-header">
+            <h2 class="dashboard-card-title">Virtual Cards</h2>
+            <a href="/virtual-card" class="dashboard-card-action">Create New</a>
+          </div>
+          
+          <div id="virtual-cards-container">
+            <!-- Virtual cards will be loaded here -->
+            <div class="empty-state">
+              <div class="empty-state-icon">💳</div>
+              <p>You don't have any virtual cards yet.</p>
+              <a href="/virtual-card" class="btn btn-block">Create Your First Card</a>
+            </div>
+          </div>
+        </div>
+        
+        <div class="dashboard-card">
+          <div class="dashboard-card-header">
+            <h2 class="dashboard-card-title">Payment Methods</h2>
+            <a href="/payment-methods" class="dashboard-card-action">Add New</a>
+          </div>
+          
+          <div id="payment-methods-container">
+            <!-- Payment methods will be loaded here -->
+            <div class="empty-state">
+              <div class="empty-state-icon">💰</div>
+              <p>No payment methods added.</p>
+              <a href="/payment-methods" class="btn btn-block">Add Payment Method</a>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="dashboard-card recent-transactions">
+        <div class="dashboard-card-header">
+          <h2 class="dashboard-card-title">Recent Transactions</h2>
+          <a href="/transactions" class="dashboard-card-action">View All</a>
+        </div>
+        
+        <div id="transactions-container">
+          <!-- Transactions will be loaded here -->
+          <div class="empty-state">
+            <div class="empty-state-icon">📊</div>
+            <p>No transaction history yet.</p>
+            <p>Transactions will appear here after you use your virtual cards.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Check if user is authenticated
+    async function checkAuth() {
+      try {
+        const response = await fetch('/api/user');
+        
+        if (!response.ok) {
+          // If not authenticated, redirect to login page
+          window.location.href = '/auth';
+          return null;
+        }
+        
+        return await response.json();
+      } catch (error) {
+        console.error('Auth check failed', error);
+        window.location.href = '/auth';
+        return null;
+      }
+    }
+    
+    // Load virtual cards
+    async function loadVirtualCards() {
+      try {
+        const response = await fetch('/api/virtual-cards');
+        
+        if (!response.ok) {
+          throw new Error('Failed to load virtual cards');
+        }
+        
+        const cards = await response.json();
+        const container = document.getElementById('virtual-cards-container');
+        
+        if (cards.length === 0) {
+          return; // Keep the empty state visible
+        }
+        
+        // Clear empty state
+        container.innerHTML = '';
+        
+        // Add each virtual card
+        cards.forEach(card => {
+          const cardElement = document.createElement('div');
+          const classes = ['virtual-card'];
+          
+          // Add status class
+          if (card.status === 'inactive') {
+            classes.push('inactive');
+          }
+          
+          // Add one-time class
+          if (card.isOneTime) {
+            classes.push('one-time');
+          }
+          
+          cardElement.className = classes.join(' ');
+          cardElement.innerHTML = `
+            <div class="virtual-card-name">${card.name}</div>
+            <div class="virtual-card-number">**** **** **** ${card.lastFour}</div>
+            <div class="virtual-card-details">
+              <div>Expires: ${card.expiryDate}</div>
+              <div>Status: ${card.status}</div>
+              <div>${card.isOneTime ? 'One-time use' : 'Multiple-use'}</div>
+            </div>
+            <div class="virtual-card-balance">Balance: $${card.balance || '0.00'}</div>
+          `;
+          container.appendChild(cardElement);
+        });
+      } catch (error) {
+        console.error('Error loading virtual cards', error);
+      }
+    }
+    
+    // Load payment methods
+    async function loadPaymentMethods() {
+      try {
+        const response = await fetch('/api/payment-methods');
+        
+        if (!response.ok) {
+          throw new Error('Failed to load payment methods');
+        }
+        
+        const paymentMethods = await response.json();
+        const container = document.getElementById('payment-methods-container');
+        
+        if (paymentMethods.length === 0) {
+          return; // Keep the empty state visible
+        }
+        
+        // Clear empty state
+        container.innerHTML = '';
+        
+        // Add each payment method
+        paymentMethods.forEach(method => {
+          const methodElement = document.createElement('div');
+          methodElement.className = 'payment-method';
+          
+          // Set icon based on payment method type
+          let icon = '💳';
+          if (method.type === 'bank_account') icon = '🏦';
+          if (method.type === 'wallet') icon = '👛';
+          
+          methodElement.innerHTML = `
+            <div class="payment-method-icon">${icon}</div>
+            <div class="payment-method-details">
+              <div class="payment-method-name">${method.name || method.card.brand}</div>
+              <div class="payment-method-info">
+                ${method.card ? `**** ${method.card.last4} · Expires ${method.card.exp_month}/${method.card.exp_year}` : ''}
+              </div>
+            </div>
+          `;
+          container.appendChild(methodElement);
+        });
+      } catch (error) {
+        console.error('Error loading payment methods', error);
+      }
+    }
+    
+    // Load transactions
+    async function loadTransactions() {
+      try {
+        const response = await fetch('/api/transactions');
+        
+        if (!response.ok) {
+          throw new Error('Failed to load transactions');
+        }
+        
+        const transactions = await response.json();
+        const container = document.getElementById('transactions-container');
+        
+        if (transactions.length === 0) {
+          return; // Keep the empty state visible
+        }
+        
+        // Clear empty state
+        container.innerHTML = '';
+        
+        // Create table for transactions
+        const table = document.createElement('table');
+        table.className = 'transaction-table';
+        
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Description</th>
+              <th>Card</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${transactions.map(tx => `
+              <tr>
+                <td>${new Date(tx.date).toLocaleDateString()}</td>
+                <td>${tx.description}</td>
+                <td>**** ${tx.cardLastFour}</td>
+                <td class="transaction-amount ${tx.amount < 0 ? 'transaction-negative' : 'transaction-positive'}">
+                  ${tx.amount < 0 ? '-' : '+'}$${Math.abs(tx.amount).toFixed(2)}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        `;
+        
+        container.appendChild(table);
+      } catch (error) {
+        console.error('Error loading transactions', error);
+      }
+    }
+    
+    // Initialize dashboard
+    async function initDashboard() {
+      const user = await checkAuth();
+      
+      if (user) {
+        // Load data
+        loadVirtualCards();
+        loadPaymentMethods();
+        loadTransactions();
+      }
+    }
+    
+    // Start loading data when the page loads
+    window.addEventListener('DOMContentLoaded', initDashboard);
+  </script>
+</body>
+</html>

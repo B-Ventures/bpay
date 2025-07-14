@@ -1,0 +1,126 @@
+💻 Project Name: getbpay
+A secure, modular split-payment PWA generating virtual cards from multiple user payment methods.
+
+🧠 Tech Stack Recommendation for Replit:
+Frontend: React.js + TailwindCSS (lightweight, fast, PWA-ready)
+
+Backend: Express.js (Node.js), with REST APIs
+
+Database: Firebase / Supabase / MongoDB Atlas (token storage, user data)
+
+Card Issuing: Stripe Issuing or Checkout.com (external API integration)
+
+Auth: Firebase Auth / Auth0 (OAuth for user onboarding)
+
+PWA Compatibility: Vite + React PWA plugin
+
+Browser Extension (Phase 2): Manifest v3 + React popup + background script
+
+🧩 Folder Structure Prompt
+Here's your prompt to scaffold the app correctly:
+
+bash
+Copy
+Edit
+/getbpay
+│
+├── /client                # React Frontend
+│   ├── /public
+│   ├── /src
+│   │   ├── /components
+│   │   ├── /pages
+│   │   ├── /services      # API calls (Stripe, backend)
+│   │   ├── /hooks
+│   │   └── App.jsx
+│   ├── tailwind.config.js
+│   └── vite.config.js     # + PWA plugin
+│
+├── /server                # Node/Express Backend
+│   ├── /routes
+│   │   ├── paymentRoutes.js
+│   │   └── authRoutes.js
+│   ├── /controllers
+│   ├── /services
+│   │   ├── stripeService.js
+│   │   └── cardManager.js
+│   ├── server.js
+│   └── .env
+│
+├── /extension (Phase 2)   # Chrome Extension Code
+│   ├── manifest.json
+│   ├── popup.html
+│   ├── popup.js
+│   └── background.js
+│
+├── README.md
+├── .replit
+├── replit.nix
+└── package.json
+📦 Modules You’ll Need to Install
+For backend:
+
+bash
+Copy
+Edit
+npm install express dotenv cors stripe axios body-parser
+For frontend (inside /client):
+
+bash
+Copy
+Edit
+npm install react-router-dom axios react-use tailwindcss @stripe/react-stripe-js @stripe/stripe-js
+🔧 Replit Prompt to Scaffold All
+Paste this into Replit shell one section at a time or break it up into steps if needed:
+
+bash
+Copy
+Edit
+npx create-vite@latest getbpay --template react
+cd getbpay
+npm install
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+Then update tailwind.config.js and index.css accordingly.
+
+Add PWA support:
+
+bash
+Copy
+Edit
+npm install vite-plugin-pwa
+In vite.config.js:
+
+js
+Copy
+Edit
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
+
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.svg'],
+      manifest: {
+        name: 'GetBPay',
+        short_name: 'BPay',
+        description: 'Split & Pay your way with virtual cards.',
+        theme_color: '#0f172a',
+        icons: [
+          {
+            src: '/icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+          },
+          {
+            src: '/icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+          },
+        ],
+      },
+    }),
+  ],
+})

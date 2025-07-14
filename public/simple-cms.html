@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple CMS - getBPay</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <!-- Make sure Axios loads with direct CDN and integrity hash -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.7/axios.min.js" 
+          integrity="sha512-NQfB/bDaB8kaSXF8E77JjhHG5PM6XVRxvHzkZiwl3ddWCEPBa23T76MuWSwAJdMGJnmQxTYkbU4fsPCfwP1WOA==" 
+          crossorigin="anonymous" 
+          referrerpolicy="no-referrer"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="app" class="max-w-5xl mx-auto p-6">
+    <div class="bg-white shadow-md rounded-lg overflow-hidden">
+      <div class="p-6 border-b">
+        <h1 class="text-2xl font-bold">Simple Content Management System</h1>
+        <p class="text-gray-600 mt-1">Manage your website content with this simplified interface</p>
+      </div>
+
+      <!-- Navigation -->
+      <div class="p-4 bg-gray-50 border-b">
+        <div class="flex space-x-4">
+          <a href="/" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Home</a>
+          <a href="/admin/content" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">Original CMS</a>
+          <a href="/dashboard" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">Dashboard</a>
+        </div>
+      </div>
+
+      <!-- Auth Status -->
+      <div id="auth-status" class="p-4 bg-yellow-50 border-b border-yellow-200 hidden">
+        <p>Please login with admin credentials to use the CMS</p>
+        <form id="login-form" class="mt-4">
+          <div class="flex space-x-2">
+            <input type="text" id="username" placeholder="Username" class="px-3 py-2 border rounded" />
+            <input type="password" id="password" placeholder="Password" class="px-3 py-2 border rounded" />
+            <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Login</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Tabs -->
+      <div class="border-b mb-4">
+        <div class="flex">
+          <button id="tab-pages" class="py-2 px-4 text-center border-b-2 border-blue-500 text-blue-600 font-medium text-sm">Pages</button>
+          <button id="tab-sections" class="py-2 px-4 text-center border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium text-sm">Sections</button>
+        </div>
+      </div>
+
+      <!-- Main Content -->
+      <div class="p-6">
+        <!-- Pages Tab -->
+        <div id="pages-content">
+          <div class="flex justify-between mb-4">
+            <h2 class="text-lg font-semibold">Content Pages</h2>
+            <button id="create-page-btn" class="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600">+ Add Page</button>
+          </div>
+          
+          <div id="pages-list" class="border rounded divide-y">
+            <div class="p-4 text-center text-gray-500">Loading pages...</div>
+          </div>
+        </div>
+
+        <!-- Sections Tab -->
+        <div id="sections-content" class="hidden">
+          <div class="flex justify-between mb-4">
+            <h2 class="text-lg font-semibold" id="sections-title">Page Sections</h2>
+            <button id="create-section-btn" class="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600">+ Add Section</button>
+          </div>
+          
+          <div id="sections-list" class="space-y-4">
+            <div class="p-4 text-center text-gray-500">Please select a page first</div>
+          </div>
+        </div>
+
+        <!-- Edit Form -->
+        <div id="edit-form" class="hidden mt-6 border rounded p-4">
+          <h3 class="font-semibold mb-4" id="edit-form-title">Edit Item</h3>
+          <div id="edit-form-fields" class="space-y-4">
+            <!-- Fields will be added dynamically -->
+          </div>
+          <div class="flex justify-end space-x-3 mt-4">
+            <button id="cancel-edit-btn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400">Cancel</button>
+            <button id="save-edit-btn" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Save Changes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let user = null;
+    let pages = [];
+    let sections = [];
+    let selectedPage = null;
+    let editItem = null;
+    let activeTab = 'pages';
+
+    // Elements
+    const pagesContent = document.getElementById('pages-content');
+    const sectionsContent = document.getElementById('sections-content');
+    const pagesList = document.getElementById('pages-list');
+    const sectionsList = document.getElementById('sections-list');
+    const sectionsTitle = document.getElementById('sections-title');
+    const editForm = document.getElementById('edit-form');
+    const editFormTitle = document.getElementById('edit-form-title');
+    const editFormFields = document.getElementById('edit-form-fields');
+    const authStatus = document.getElementById('auth-status');
+    const loginForm = document.getElementById('login-form');
+
+    // Tabs
+    document.getElementById('tab-pages').addEventListener('click', () => setActiveTab('pages'));
+    document.getElementById('tab-sections').addEventListener('click', () => setActiveTab('sections'));
+    
+    // Buttons
+    document.getElementById('create-page-btn').addEventListener('click', createPage);
+    document.getElementById('create-section-btn').addEventListener('click', createSection);
+    document.getElementById('cancel-edit-btn').addEventListener('click', cancelEdit);
+    document.getElementById('save-edit-btn').addEventListener('click', saveEdit);
+
+    // Login form
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      login(username, password);
+    });
+
+    // Initialize
+    checkAuth();
+    
+    // Auth functions
+    function checkAuth() {
+      // First try querying the CMS endpoints - if they work, we're already authenticated
+      axios.get('/api/content-management/pages', { withCredentials: true })
+        .then(response => {
+          authStatus.classList.add('hidden');
+          // If we can access this endpoint, we're authenticated
+          user = { authenticated: true };
+          fetchPages();
+        })
+        .catch(err => {
+          console.log('Auth check: Need to login', err);
+          // Show login form
+          authStatus.classList.remove('hidden');
+          
+          // Pre-fill the form with admin credentials for testing
+          document.getElementById('username').value = 'admin';
+          document.getElementById('password').value = 'admin123';
+        });
+    }
+
+    function login(username, password) {
+      axios.post('/api/auth/login', { username, password }, { withCredentials: true })
+        .then(response => {
+          user = response.data; 
+          authStatus.classList.add('hidden');
+          fetchPages();
+        })
+        .catch(err => {
+          alert('Login failed: ' + (err.response?.data?.error || err.message));
+          console.error('Login error:', err);
+          
+          // For testing, let's try a fallback approach to another login API
+          tryAlternativeLogin(username, password);
+        });
+    }
+    
+    function tryAlternativeLogin(username, password) {
+      // Try another possible login endpoint format
+      axios.post('/api/login', { username, password }, { withCredentials: true })
+        .then(response => {
+          user = response.data;
+          authStatus.classList.add('hidden');
+          fetchPages();
+        })
+        .catch(err => {
+          console.error('Alternative login failed:', err);
+        });
+    }
+
+    // Tab functions
+    function setActiveTab(tab) {
+      activeTab = tab;
+      if (tab === 'pages') {
+        pagesContent.classList.remove('hidden');
+        sectionsContent.classList.add('hidden');
+        document.getElementById('tab-pages').classList.add('border-blue-500', 'text-blue-600');
+        document.getElementById('tab-pages').classList.remove('border-transparent', 'text-gray-500');
+        document.getElementById('tab-sections').classList.add('border-transparent', 'text-gray-500');
+        document.getElementById('tab-sections').classList.remove('border-blue-500', 'text-blue-600');
+      } else {
+        pagesContent.classList.add('hidden');
+        sectionsContent.classList.remove('hidden');
+        document.getElementById('tab-sections').classList.add('border-blue-500', 'text-blue-600');
+        document.getElementById('tab-sections').classList.remove('border-transparent', 'text-gray-500');
+        document.getElementById('tab-pages').classList.add('border-transparent', 'text-gray-500');
+        document.getElementById('tab-pages').classList.remove('border-blue-500', 'text-blue-600');
+      }
+    }
+
+    // API functions
+    function fetchPages() {
+      pagesList.innerHTML = '<div class="p-4 text-center text-gray-500">Loading pages...</div>';
+      
+      axios.get('/api/content-management/pages', { withCredentials: true })
+        .then(response => {
+          pages = response.data;
+          renderPages();
+        })
+        .catch(err => {
+          pagesList.innerHTML = `<div class="p-4 text-center text-red-500">Error: ${err.response?.data?.error || err.message}</div>`;
+          console.error('Error fetching pages:', err);
+        });
+    }
+
+    function fetchSections(pageId) {
+      if (!pageId) return;
+      
+      sectionsList.innerHTML = '<div class="p-4 text-center text-gray-500">Loading sections...</div>';
+      
+      const numericId = selectedPage.id;
+      
+      console.log(`Fetching sections for page ${pageId} (ID: ${numericId})`);
+      
+      // Handle differently based on if we're using pageId or numeric id
+      const endpoint = Number.isInteger(parseInt(pageId)) 
+        ? `/api/content-management/pages/${pageId}/sections`
+        : `/api/content-management/pages/${pageId}/sections`;
+        
+      axios.get(endpoint, { withCredentials: true })
+        .then(response => {
+          console.log('Sections response:', response.data);
+          sections = Array.isArray(response.data) ? response.data : [];
+          renderSections();
+        })
+        .catch(err => {
+          console.log('Error fetching sections for page', pageId, err);
+          // If there's an error, set to empty array instead of showing error
+          sections = [];
+          renderSections();
+          
+          // Add a button to create initial sections
+          sectionsList.innerHTML += `
+            <div class="mt-4 p-4 bg-yellow-50 border-l-4 border-yellow-400">
+              <p class="text-sm text-yellow-700">No sections found for this page. Would you like to create initial sections?</p>
+              <button id="create-initial-sections" class="mt-2 px-3 py-1 bg-yellow-500 text-white text-sm rounded hover:bg-yellow-600">
+                Create Starter Sections
+              </button>
+            </div>
+          `;
+          
+          document.getElementById('create-initial-sections')?.addEventListener('click', () => createInitialSections(pageId));
+        });
+    }
+    
+    function createInitialSections(pageId) {
+      if (!confirm('This will create some sample sections for this page. Continue?')) return;
+      
+      const initialSections = [
+        {
+          section_id: `header-${Date.now()}`,
+          name: 'Header',
+          content: {
+            title: 'Welcome to getBPay',
+            subtitle: 'A modern digital tipping platform',
+            ctaText: 'Get Started',
+            ctaLink: '/signup'
+          },
+          order: 1,
+          isActive: true
+        },
+        {
+          section_id: `features-${Date.now()}`,
+          name: 'Features',
+          content: {
+            title: 'Our Features',
+            items: [
+              { title: 'Secure Payments', description: 'End-to-end encrypted transactions' },
+              { title: 'Split Bills', description: 'Easily split bills with friends' },
+              { title: 'Virtual Cards', description: 'Generate virtual cards for one-time use' }
+            ]
+          },
+          order: 2,
+          isActive: true
+        }
+      ];
+      
+      let promisesCompleted = 0;
+      
+      initialSections.forEach(section => {
+        axios.post(`/api/content-management/pages/${pageId}/sections`, section, { withCredentials: true })
+          .then(() => {
+            promisesCompleted++;
+            if (promisesCompleted === initialSections.length) {
+              fetchSections(pageId);
+            }
+          })
+          .catch(err => {
+            console.error('Error creating initial section:', err);
+          });
+      });
+    }
+
+    function createPage() {
+      const title = prompt('Enter page title:');
+      if (!title) return;
+      
+      const pageId = title.toLowerCase().replace(/\s+/g, '-');
+      
+      axios.post('/api/content-management/pages', {
+        page_id: pageId,
+        title,
+        status: 'published'
+      }, { withCredentials: true })
+        .then(response => {
+          pages.push(response.data);
+          renderPages();
+        })
+        .catch(err => {
+          alert('Failed to create page: ' + (err.response?.data?.error || err.message));
+          console.error('Error creating page:', err);
+        });
+    }
+
+    function createSection() {
+      if (!selectedPage) {
+        alert('Please select a page first');
+        return;
+      }
+      
+      const name = prompt('Enter section name:');
+      if (!name) return;
+      
+      const pageId = selectedPage.pageId || selectedPage.page_id;
+      const sectionId = `section-${Date.now()}`;
+      
+      axios.post(`/api/content-management/pages/${pageId}/sections`, {
+        section_id: sectionId,
+        name,
+        content: {
+          title: name,
+          description: 'New section content'
+        },
+        order: sections.length + 1,
+        isActive: true
+      }, { withCredentials: true })
+        .then(response => {
+          sections.push(response.data);
+          renderSections();
+        })
+        .catch(err => {
+          alert('Failed to create section: ' + (err.response?.data?.error || err.message));
+          console.error('Error creating section:', err);
+        });
+    }
+
+    function editPage(page) {
+      editItem = { ...page, type: 'page' };
+      editFormTitle.textContent = `Edit Page: ${page.title}`;
+      
+      // Create form fields
+      editFormFields.innerHTML = `
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Page Title</label>
+          <input type="text" id="edit-title" value="${page.title || ''}" class="w-full px-3 py-2 border rounded">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+          <textarea id="edit-description" class="w-full px-3 py-2 border rounded" rows="3">${page.description || ''}</textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+          <select id="edit-status" class="w-full px-3 py-2 border rounded">
+            <option value="published" ${page.status === 'published' ? 'selected' : ''}>Published</option>
+            <option value="draft" ${page.status === 'draft' ? 'selected' : ''}>Draft</option>
+            <option value="archived" ${page.status === 'archived' ? 'selected' : ''}>Archived</option>
+          </select>
+        </div>
+      `;
+      
+      editForm.classList.remove('hidden');
+    }
+
+    function editSection(section) {
+      editItem = { ...section, type: 'section' };
+      editFormTitle.textContent = `Edit Section: ${section.name}`;
+      
+      // Create form fields
+      editFormFields.innerHTML = `
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Section Name</label>
+          <input type="text" id="edit-name" value="${section.name || ''}" class="w-full px-3 py-2 border rounded">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Content (JSON)</label>
+          <textarea id="edit-content" class="w-full px-3 py-2 border rounded font-mono" rows="10">${JSON.stringify(section.content || {}, null, 2)}</textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Order</label>
+          <input type="number" id="edit-order" value="${section.order || 0}" class="w-full px-3 py-2 border rounded" min="0">
+        </div>
+        <div class="flex items-center">
+          <input type="checkbox" id="edit-active" ${section.isActive ? 'checked' : ''} class="mr-2">
+          <label for="edit-active" class="text-sm font-medium text-gray-700">Active</label>
+        </div>
+      `;
+      
+      editForm.classList.remove('hidden');
+    }
+
+    function cancelEdit() {
+      editItem = null;
+      editForm.classList.add('hidden');
+    }
+
+    function saveEdit() {
+      if (!editItem) return;
+      
+      if (editItem.type === 'page') {
+        const updatedPage = {
+          ...editItem,
+          title: document.getElementById('edit-title').value,
+          description: document.getElementById('edit-description').value,
+          status: document.getElementById('edit-status').value
+        };
+        
+        const pageId = updatedPage.pageId || updatedPage.page_id;
+        
+        axios.put(`/api/content-management/pages/${pageId}`, updatedPage, { withCredentials: true })
+          .then(response => {
+            const index = pages.findIndex(p => p.id === updatedPage.id);
+            if (index !== -1) {
+              pages[index] = response.data;
+            }
+            renderPages();
+            if (selectedPage && selectedPage.id === updatedPage.id) {
+              selectedPage = response.data;
+            }
+            cancelEdit();
+          })
+          .catch(err => {
+            alert('Failed to update page: ' + (err.response?.data?.error || err.message));
+            console.error('Error updating page:', err);
+          });
+      } else if (editItem.type === 'section') {
+        let content;
+        try {
+          content = JSON.parse(document.getElementById('edit-content').value);
+        } catch (err) {
+          alert('Invalid JSON in content field');
+          return;
+        }
+        
+        const updatedSection = {
+          ...editItem,
+          name: document.getElementById('edit-name').value,
+          content,
+          order: parseInt(document.getElementById('edit-order').value),
+          isActive: document.getElementById('edit-active').checked
+        };
+        
+        const pageId = selectedPage.pageId || selectedPage.page_id;
+        const sectionId = updatedSection.sectionId || updatedSection.section_id;
+        
+        axios.put(`/api/content-management/pages/${pageId}/sections/${sectionId}`, updatedSection, { withCredentials: true })
+          .then(response => {
+            const index = sections.findIndex(s => s.id === updatedSection.id);
+            if (index !== -1) {
+              sections[index] = response.data;
+            }
+            renderSections();
+            cancelEdit();
+          })
+          .catch(err => {
+            alert('Failed to update section: ' + (err.response?.data?.error || err.message));
+            console.error('Error updating section:', err);
+          });
+      }
+    }
+
+    function deletePage(page) {
+      if (!confirm(`Are you sure you want to delete the page "${page.title}"?`)) {
+        return;
+      }
+      
+      const pageId = page.pageId || page.page_id;
+      
+      axios.delete(`/api/content-management/pages/${pageId}`, { withCredentials: true })
+        .then(() => {
+          pages = pages.filter(p => p.id !== page.id);
+          renderPages();
+          
+          if (selectedPage && selectedPage.id === page.id) {
+            selectedPage = pages.length > 0 ? pages[0] : null;
+            if (selectedPage) {
+              fetchSections(selectedPage.pageId || selectedPage.page_id);
+            } else {
+              sections = [];
+              renderSections();
+            }
+          }
+        })
+        .catch(err => {
+          alert('Failed to delete page: ' + (err.response?.data?.error || err.message));
+          console.error('Error deleting page:', err);
+        });
+    }
+
+    function deleteSection(section) {
+      if (!confirm(`Are you sure you want to delete the section "${section.name}"?`)) {
+        return;
+      }
+      
+      const pageId = selectedPage.pageId || selectedPage.page_id;
+      const sectionId = section.sectionId || section.section_id;
+      
+      axios.delete(`/api/content-management/pages/${pageId}/sections/${sectionId}`, { withCredentials: true })
+        .then(() => {
+          sections = sections.filter(s => s.id !== section.id);
+          renderSections();
+        })
+        .catch(err => {
+          alert('Failed to delete section: ' + (err.response?.data?.error || err.message));
+          console.error('Error deleting section:', err);
+        });
+    }
+
+    // Render functions
+    function renderPages() {
+      if (pages.length === 0) {
+        pagesList.innerHTML = `
+          <div class="text-center p-4">
+            <p class="text-gray-500 mb-3">No pages found</p>
+          </div>
+        `;
+        return;
+      }
+      
+      let html = '';
+      
+      pages.forEach(page => {
+        const isSelected = selectedPage && selectedPage.id === page.id;
+        
+        html += `
+          <div class="p-4 ${isSelected ? 'bg-blue-50 border-l-4 border-blue-500' : ''} hover:bg-gray-50">
+            <div class="flex justify-between items-center">
+              <div>
+                <h3 class="font-medium">${page.title}</h3>
+                <p class="text-sm text-gray-500">/${page.pageId || page.page_id}</p>
+              </div>
+              <div class="space-x-2">
+                <button class="px-2 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 edit-page" data-id="${page.id}">Edit</button>
+                <button class="px-2 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 delete-page" data-id="${page.id}">Delete</button>
+                <button class="px-2 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 select-page" data-id="${page.id}">Select</button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      
+      pagesList.innerHTML = html;
+      
+      // Add event listeners
+      document.querySelectorAll('.edit-page').forEach(button => {
+        button.addEventListener('click', () => {
+          const page = pages.find(p => p.id === parseInt(button.dataset.id));
+          if (page) editPage(page);
+        });
+      });
+      
+      document.querySelectorAll('.delete-page').forEach(button => {
+        button.addEventListener('click', () => {
+          const page = pages.find(p => p.id === parseInt(button.dataset.id));
+          if (page) deletePage(page);
+        });
+      });
+      
+      document.querySelectorAll('.select-page').forEach(button => {
+        button.addEventListener('click', () => {
+          const pageId = parseInt(button.dataset.id);
+          console.log('Selecting page with ID:', pageId);
+          
+          const page = pages.find(p => {
+            const id = parseInt(p.id);
+            return id === pageId;
+          });
+          
+          if (page) {
+            console.log('Found page:', page);
+            selectedPage = page;
+            renderPages();
+            
+            // IMPORTANT: For the API, we need to use the string pageId (e.g., "home", "about")
+      // rather than the numeric id (e.g., 1, 2)
+      const idForFetch = page.pageId || page.page_id;
+      console.log('Using ID for fetch:', idForFetch, 'from page:', page);
+            
+            fetchSections(idForFetch);
+            setActiveTab('sections');
+          } else {
+            console.error('Page not found with ID:', pageId);
+          }
+        });
+      });
+    }
+
+    function renderSections() {
+      if (!selectedPage) {
+        sectionsList.innerHTML = `
+          <div class="text-center p-4">
+            <p class="text-gray-500">Please select a page first</p>
+          </div>
+        `;
+        return;
+      }
+      
+      sectionsTitle.textContent = `Sections for ${selectedPage.title}`;
+      
+      if (sections.length === 0) {
+        sectionsList.innerHTML = `
+          <div class="text-center p-4">
+            <p class="text-gray-500 mb-3">No sections found for this page</p>
+          </div>
+        `;
+        return;
+      }
+      
+      let html = '';
+      
+      sections.forEach(section => {
+        html += `
+          <div class="border rounded p-4">
+            <div class="flex justify-between items-center">
+              <h3 class="font-medium">${section.name}</h3>
+              <div class="space-x-2">
+                <button class="px-2 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 edit-section" data-id="${section.id}">Edit</button>
+                <button class="px-2 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 delete-section" data-id="${section.id}">Delete</button>
+              </div>
+            </div>
+            <div class="mt-2">
+              <div class="text-sm text-gray-500">Content:</div>
+              <pre class="mt-1 text-xs bg-gray-100 p-2 rounded overflow-auto max-h-40">${JSON.stringify(section.content, null, 2)}</pre>
+            </div>
+          </div>
+        `;
+      });
+      
+      sectionsList.innerHTML = html;
+      
+      // Add event listeners
+      document.querySelectorAll('.edit-section').forEach(button => {
+        button.addEventListener('click', () => {
+          const section = sections.find(s => s.id === parseInt(button.dataset.id));
+          if (section) editSection(section);
+        });
+      });
+      
+      document.querySelectorAll('.delete-section').forEach(button => {
+        button.addEventListener('click', () => {
+          const section = sections.find(s => s.id === parseInt(button.dataset.id));
+          if (section) deleteSection(section);
+        });
+      });
+    }
+  </script>
+</body>
+</html>

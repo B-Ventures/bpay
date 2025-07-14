@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Success - bPay</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-light: #6366f1;
+      --primary-dark: #4338ca;
+      --secondary: #0ea5e9;
+      --accent: #f97316;
+      --success: #22c55e;
+      --success-light: #86efac;
+      --success-dark: #16a34a;
+      --warning: #eab308;
+      --danger: #ef4444;
+      --neutral-50: #f9fafb;
+      --neutral-100: #f3f4f6;
+      --neutral-200: #e5e7eb;
+      --neutral-300: #d1d5db;
+      --neutral-400: #9ca3af;
+      --neutral-500: #6b7280;
+      --neutral-600: #4b5563;
+      --neutral-700: #374151;
+      --neutral-800: #1f2937;
+      --neutral-900: #111827;
+      --radius-sm: 0.25rem;
+      --radius-md: 0.375rem;
+      --radius-lg: 0.5rem;
+      --radius-xl: 0.75rem;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      padding: 0;
+      margin: 0;
+      background-color: var(--neutral-100);
+      color: var(--neutral-800);
+    }
+    
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+    
+    header {
+      background-color: white;
+      box-shadow: var(--shadow-sm);
+      padding: 1rem 0;
+      margin-bottom: 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    
+    .header-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+    
+    .logo {
+      font-weight: bold;
+      font-size: 1.5rem;
+      color: var(--primary);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .logo i {
+      font-size: 1.25rem;
+    }
+    
+    nav a {
+      color: var(--neutral-600);
+      text-decoration: none;
+      transition: color 0.2s;
+      padding: 0.5rem 0.75rem;
+      border-radius: var(--radius-md);
+    }
+    
+    nav a:hover {
+      color: var(--primary);
+      background-color: var(--neutral-100);
+    }
+    
+    .success-wrapper {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    
+    .card {
+      background: white;
+      border-radius: var(--radius-lg);
+      padding: 2rem;
+      box-shadow: var(--shadow-md);
+      margin-bottom: 1.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .success-card {
+      text-align: center;
+      position: relative;
+    }
+    
+    .confetti {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+    
+    .success-content {
+      position: relative;
+      z-index: 1;
+    }
+    
+    h1 {
+      color: var(--neutral-800);
+      font-size: 2rem;
+      margin-top: 0;
+      margin-bottom: 1rem;
+      line-height: 1.2;
+    }
+    
+    h2 {
+      color: var(--primary);
+      font-size: 1.4rem;
+      margin-top: 0;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .success-icon {
+      background-color: var(--success-light);
+      height: 90px;
+      width: 90px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+      border: 4px solid white;
+      box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.2);
+    }
+    
+    .checkmark {
+      color: var(--success-dark);
+      font-size: 40px;
+    }
+    
+    .summary {
+      background-color: var(--neutral-50);
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+      border: 1px solid var(--neutral-200);
+    }
+    
+    .receipt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid var(--neutral-200);
+      padding-bottom: 1rem;
+    }
+    
+    .receipt-number {
+      font-family: monospace;
+      background-color: var(--neutral-100);
+      padding: 0.25rem 0.5rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.875rem;
+      color: var(--neutral-700);
+    }
+    
+    .row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+      padding: 0.375rem 0;
+    }
+    
+    .total {
+      font-weight: bold;
+      font-size: 1.1rem;
+      padding-top: 0.5rem;
+      margin-top: 0.5rem;
+      border-top: 1px solid var(--neutral-200);
+      color: var(--neutral-900);
+    }
+    
+    .payment-sources-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    
+    @media (max-width: 640px) {
+      .payment-sources-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .payment-source {
+      border: 1px solid var(--neutral-200);
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background-color: white;
+      transition: all 0.2s;
+    }
+    
+    .payment-source:hover {
+      border-color: var(--primary-light);
+      box-shadow: 0 0 0 1px var(--primary-light);
+    }
+    
+    .payment-source-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    
+    .payment-source-logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background-color: var(--neutral-100);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 0.75rem;
+      font-size: 1.25rem;
+    }
+    
+    .visa-logo {
+      color: #1a1f71;
+    }
+    
+    .bank-logo {
+      color: #2e7d32;
+    }
+    
+    .payment-source-info h3 {
+      font-weight: 500;
+      font-size: 1rem;
+      margin: 0;
+      color: var(--neutral-800);
+    }
+    
+    .payment-source-type {
+      font-size: 0.85rem;
+      color: var(--neutral-500);
+      margin-top: 0.25rem;
+    }
+    
+    .payment-source-amount {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-top: 0.5rem;
+      color: var(--neutral-900);
+    }
+    
+    .payment-source-badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      margin-left: 0.5rem;
+    }
+    
+    .badge-visa {
+      background-color: rgba(25, 118, 210, 0.1);
+      color: #1976d2;
+    }
+    
+    .badge-bank {
+      background-color: rgba(46, 125, 50, 0.1);
+      color: #2e7d32;
+    }
+    
+    .virtual-card {
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      color: white;
+      border-radius: var(--radius-md);
+      padding: 1.5rem;
+      position: relative;
+      overflow: hidden;
+      margin-top: 2.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 10px 20px rgba(79, 70, 229, 0.15);
+    }
+    
+    .card-background {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.1;
+      background-image: radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.3) 0%, transparent 30%),
+                        radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.2) 0%, transparent 20%);
+      z-index: 0;
+    }
+    
+    .card-content {
+      position: relative;
+      z-index: 1;
+    }
+    
+    .card-chip {
+      position: absolute;
+      top: 1.5rem;
+      right: 1.5rem;
+      font-size: 2rem;
+      opacity: 0.9;
+    }
+    
+    .card-issuer {
+      display: flex;
+      align-items: center;
+      margin-bottom: 2rem;
+    }
+    
+    .card-issuer-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background-color: rgba(255, 255, 255, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 0.75rem;
+    }
+    
+    .card-issuer-name {
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    
+    .card-number {
+      font-family: monospace;
+      font-size: 1.5rem;
+      letter-spacing: 2px;
+      margin: 1.5rem 0;
+      text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+    }
+    
+    .card-details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    
+    .card-detail-group {
+      margin-top: 0.5rem;
+    }
+    
+    .card-detail-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      opacity: 0.8;
+      margin-bottom: 0.375rem;
+    }
+    
+    .card-detail-value {
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+    
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      background-color: var(--primary);
+      color: white;
+      padding: 0.875rem 1.75rem;
+      border-radius: var(--radius-md);
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    
+    .button:hover {
+      background-color: var(--primary-dark);
+      transform: translateY(-1px);
+    }
+    
+    .button-secondary {
+      background-color: white;
+      color: var(--primary);
+      border: 1px solid var(--neutral-300);
+    }
+    
+    .button-secondary:hover {
+      background-color: var(--neutral-50);
+      border-color: var(--primary);
+      color: var(--primary-dark);
+    }
+    
+    .actions {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 2.5rem;
+    }
+    
+    .fade-in {
+      animation: fadeIn 0.8s ease-in-out;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .bounce-in {
+      animation: bounceIn 1s ease;
+    }
+    
+    @keyframes bounceIn {
+      0% { transform: scale(0.8); opacity: 0; }
+      50% { transform: scale(1.05); }
+      70% { transform: scale(0.95); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-container">
+      <a href="/" class="logo">
+        <i class="fas fa-wallet"></i>
+        bPay
+      </a>
+      <nav>
+        <a href="/"><i class="fas fa-home"></i> Home</a>
+        <a href="/dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
+      </nav>
+    </div>
+  </header>
+  
+  <div class="container">
+    <div class="success-wrapper">
+      <div class="card success-card fade-in">
+        <div class="confetti" id="confetti"></div>
+        <div class="success-content">
+          <div class="success-icon bounce-in">
+            <span class="checkmark"><i class="fas fa-check"></i></span>
+          </div>
+          
+          <h1>Payment Successful!</h1>
+          <p style="color: var(--neutral-600); margin-bottom: 2rem; max-width: 500px; margin-left: auto; margin-right: auto;">
+            Your payment has been processed successfully and your virtual card has been created and is ready to use.
+          </p>
+          
+          <div class="receipt-header">
+            <div>
+              <h2><i class="fas fa-receipt"></i> Receipt</h2>
+              <p style="color: var(--neutral-500); font-size: 0.875rem;">
+                <i class="fas fa-calendar-alt"></i> April 22, 2025 &nbsp;•&nbsp; <i class="fas fa-clock"></i> 10:45 AM
+              </p>
+            </div>
+            <div class="receipt-number">
+              TX-2025042201
+            </div>
+          </div>
+          
+          <div class="summary fade-in">
+            <div class="row">
+              <span>Cart Total:</span>
+              <span>$73.30</span>
+            </div>
+            <div class="row">
+              <span>Service Fee (2.5%):</span>
+              <span>$1.83</span>
+            </div>
+            <div class="row total">
+              <span>Total Charged:</span>
+              <span>$75.13</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card fade-in" style="animation-delay: 0.2s;">
+        <h2><i class="fas fa-money-bill-wave"></i> Payment Sources</h2>
+        <p style="color: var(--neutral-600); margin-bottom: 1.5rem;">
+          Your payment was split between these funding sources:
+        </p>
+        
+        <div class="payment-sources-grid">
+          <div class="payment-source">
+            <div class="payment-source-header">
+              <div class="payment-source-logo visa-logo">
+                <i class="fab fa-cc-visa"></i>
+              </div>
+              <div class="payment-source-info">
+                <h3>Visa ending in 4242 <span class="payment-source-badge badge-visa">Credit</span></h3>
+                <div class="payment-source-type">Authorized on Apr 22, 2025</div>
+              </div>
+            </div>
+            <div class="payment-source-amount">$37.57</div>
+          </div>
+          
+          <div class="payment-source">
+            <div class="payment-source-header">
+              <div class="payment-source-logo bank-logo">
+                <i class="fas fa-university"></i>
+              </div>
+              <div class="payment-source-info">
+                <h3>Bank Account ending in 6789 <span class="payment-source-badge badge-bank">Bank</span></h3>
+                <div class="payment-source-type">Authorized on Apr 22, 2025</div>
+              </div>
+            </div>
+            <div class="payment-source-amount">$37.56</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card fade-in" style="animation-delay: 0.4s;">
+        <h2><i class="far fa-credit-card"></i> Your Virtual Card</h2>
+        <p style="color: var(--neutral-600); margin-bottom: 0.75rem;">
+          Your virtual card is ready to use for online purchases. The cart total has been loaded onto your card.
+        </p>
+        <div style="color: var(--neutral-700); background-color: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.2); padding: 0.75rem; border-radius: var(--radius-md); margin-bottom: 1.5rem; display: flex; align-items: flex-start; gap: 0.75rem;">
+          <i class="fas fa-info-circle" style="color: var(--success-dark); margin-top: 0.2rem;"></i>
+          <div>
+            <strong>How it works:</strong> We collect $75.13 (including the 2.5% service fee) from your payment sources, but load your virtual card with exactly $73.30 - the amount needed to complete your purchase.
+          </div>
+        </div>
+        
+        <div class="virtual-card">
+          <div class="card-background"></div>
+          <div class="card-content">
+            <div class="card-chip">
+              <i class="fas fa-sim-card"></i>
+            </div>
+            
+            <div class="card-issuer">
+              <div class="card-issuer-icon">
+                <i class="fas fa-wallet"></i>
+              </div>
+              <div class="card-issuer-name">bPay Virtual</div>
+            </div>
+            
+            <div class="card-number">
+              4111 2222 3333 4444
+            </div>
+            
+            <div class="card-details">
+              <div class="card-detail-group">
+                <div class="card-detail-label">Card Holder</div>
+                <div class="card-detail-value">AUTHORIZED USER</div>
+              </div>
+              
+              <div class="card-detail-group">
+                <div class="card-detail-label">Expires</div>
+                <div class="card-detail-value">04/28</div>
+              </div>
+              
+              <div class="card-detail-group">
+                <div class="card-detail-label">CVV</div>
+                <div class="card-detail-value">123</div>
+              </div>
+              
+              <div class="card-detail-group">
+                <div class="card-detail-label">Balance</div>
+                <div class="card-detail-value">$73.30</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="actions">
+          <a href="/dashboard" class="button">
+            <i class="fas fa-tachometer-alt"></i> Go to Dashboard
+          </a>
+          <a href="/" class="button button-secondary">
+            <i class="fas fa-home"></i> Back to Home
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Create confetti effect
+    function createConfetti() {
+      const confettiContainer = document.getElementById('confetti');
+      const colors = ['#4f46e5', '#6366f1', '#8b5cf6', '#a855f7', '#22c55e', '#10b981', '#06b6d4'];
+      
+      for (let i = 0; i < 100; i++) {
+        const confetti = document.createElement('div');
+        confetti.style.position = 'absolute';
+        confetti.style.width = `${Math.random() * 10 + 5}px`;
+        confetti.style.height = `${Math.random() * 4 + 2}px`;
+        confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.borderRadius = '2px';
+        confetti.style.left = `${Math.random() * 100}%`;
+        confetti.style.top = `${Math.random() * 60}%`;
+        confetti.style.opacity = Math.random() * 0.7 + 0.3;
+        confetti.style.transform = `rotate(${Math.random() * 360}deg)`;
+        confetti.style.animation = `fall ${Math.random() * 3 + 2}s linear`;
+        
+        confettiContainer.appendChild(confetti);
+      }
+    }
+    
+    // Create CSS animation for falling confetti
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes fall {
+        0% {
+          transform: translateY(-100px) rotate(0deg);
+          opacity: 0;
+        }
+        10% {
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(${window.innerHeight * 0.5}px) rotate(720deg);
+          opacity: 0;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    
+    // Run confetti when the page loads
+    window.addEventListener('load', () => {
+      setTimeout(createConfetti, 300);
+    });
+  </script>
+</body>
+</html>

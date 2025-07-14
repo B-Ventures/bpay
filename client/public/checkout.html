@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Checkout - bPay</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-light: #6366f1;
+      --primary-dark: #4338ca;
+      --secondary: #0ea5e9;
+      --accent: #f97316;
+      --neutral-50: #f9fafb;
+      --neutral-100: #f3f4f6;
+      --neutral-200: #e5e7eb;
+      --neutral-300: #d1d5db;
+      --neutral-400: #9ca3af;
+      --neutral-500: #6b7280;
+      --neutral-600: #4b5563;
+      --neutral-700: #374151;
+      --neutral-800: #1f2937;
+      --neutral-900: #111827;
+      --success: #22c55e;
+      --warning: #eab308;
+      --danger: #ef4444;
+      --radius-sm: 0.25rem;
+      --radius-md: 0.375rem;
+      --radius-lg: 0.5rem;
+      --radius-xl: 0.75rem;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      padding: 0;
+      margin: 0;
+      background-color: var(--neutral-100);
+      color: var(--neutral-800);
+    }
+    
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+    
+    header {
+      background-color: white;
+      box-shadow: var(--shadow-sm);
+      padding: 1rem 0;
+      margin-bottom: 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    
+    .header-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+    
+    .logo {
+      font-weight: bold;
+      font-size: 1.5rem;
+      color: var(--primary);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .logo i {
+      font-size: 1.25rem;
+    }
+    
+    nav a {
+      color: var(--neutral-600);
+      text-decoration: none;
+      transition: color 0.2s;
+      padding: 0.5rem 0.75rem;
+      border-radius: var(--radius-md);
+    }
+    
+    nav a:hover {
+      color: var(--primary);
+      background-color: var(--neutral-100);
+    }
+    
+    .checkout-container {
+      display: grid;
+      grid-template-columns: 1fr 350px;
+      gap: 2rem;
+    }
+    
+    @media (max-width: 768px) {
+      .checkout-container {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .card {
+      background: white;
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      box-shadow: var(--shadow-md);
+      margin-bottom: 1.5rem;
+    }
+    
+    h1 {
+      color: var(--neutral-800);
+      font-size: 1.8rem;
+      margin-top: 0;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    h2 {
+      color: var(--primary);
+      font-size: 1.4rem;
+      margin-top: 0;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .summary {
+      background-color: var(--neutral-50);
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+      border: 1px solid var(--neutral-200);
+    }
+    
+    .row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+      padding: 0.375rem 0;
+    }
+    
+    .total {
+      font-weight: bold;
+      font-size: 1.1rem;
+      padding-top: 0.5rem;
+      margin-top: 0.5rem;
+      border-top: 1px solid var(--neutral-200);
+      color: var(--neutral-900);
+    }
+    
+    .payment-method {
+      border: 1px solid var(--neutral-200);
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+      transition: all 0.2s;
+      background-color: white;
+    }
+    
+    .payment-method:hover {
+      border-color: var(--primary-light);
+      box-shadow: 0 0 0 1px var(--primary-light);
+    }
+    
+    .payment-method-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    
+    .payment-method-logo {
+      background-color: var(--neutral-100);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 0.75rem;
+      font-size: 1.25rem;
+      color: var(--primary);
+    }
+    
+    .payment-method-info {
+      flex: 1;
+      display: flex;
+      align-items: center;
+    }
+    
+    .payment-method-details h3 {
+      font-weight: 500;
+      font-size: 1rem;
+      color: var(--neutral-800);
+      margin: 0;
+    }
+    
+    .payment-method-type {
+      font-size: 0.85rem;
+      color: var(--neutral-500);
+      margin-top: 0.25rem;
+    }
+    
+    .payment-inputs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 0.5rem;
+    }
+    
+    input[type="number"] {
+      padding: 0.625rem 0.75rem;
+      border: 1px solid var(--neutral-300);
+      border-radius: var(--radius-md);
+      width: 100%;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    
+    input[type="number"]:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px var(--primary);
+    }
+    
+    input[type="range"] {
+      width: 100%;
+      margin-top: 0.5rem;
+      margin-bottom: 0.25rem;
+    }
+    
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--neutral-600);
+      margin-bottom: 0.375rem;
+      font-weight: 500;
+    }
+    
+    .payment-progress {
+      margin-top: 0.75rem;
+      height: 6px;
+      background-color: var(--neutral-200);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    
+    .payment-progress-fill {
+      height: 100%;
+      background-color: var(--primary);
+      transition: width 0.3s ease;
+    }
+    
+    .button {
+      display: inline-block;
+      background-color: var(--primary);
+      color: white;
+      padding: 0.75rem 1.5rem;
+      border-radius: var(--radius-md);
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    
+    .button:hover {
+      background-color: var(--primary-dark);
+      transform: translateY(-1px);
+    }
+    
+    .button-secondary {
+      background-color: white;
+      color: var(--primary);
+      border: 1px solid var(--neutral-300);
+    }
+    
+    .button-secondary:hover {
+      background-color: var(--neutral-50);
+      border-color: var(--primary);
+      color: var(--primary-dark);
+    }
+    
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    
+    .checkout-summary {
+      position: sticky;
+      top: 7rem;
+      height: max-content;
+    }
+    
+    .allocation-status {
+      padding: 0.5rem 0.75rem;
+      border-radius: var(--radius-md);
+      margin-top: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+    }
+    
+    .status-success {
+      background-color: rgba(34, 197, 94, 0.1);
+      color: #16a34a;
+      border: 1px solid rgba(34, 197, 94, 0.2);
+    }
+    
+    .status-warning {
+      background-color: rgba(234, 179, 8, 0.1);
+      color: #ca8a04;
+      border: 1px solid rgba(234, 179, 8, 0.2);
+    }
+    
+    .steps {
+      display: flex;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--neutral-200);
+      padding-bottom: 1.5rem;
+    }
+    
+    .step {
+      flex: 1;
+      text-align: center;
+      position: relative;
+    }
+    
+    .step-number {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background-color: var(--primary);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 0.5rem;
+      font-weight: 500;
+      position: relative;
+      z-index: 1;
+    }
+    
+    .step-active .step-number {
+      background-color: var(--primary);
+    }
+    
+    .step-completed .step-number {
+      background-color: var(--success);
+    }
+    
+    .step-label {
+      font-size: 0.875rem;
+      color: var(--neutral-600);
+      font-weight: 500;
+    }
+    
+    .step-active .step-label {
+      color: var(--primary);
+      font-weight: 600;
+    }
+    
+    .step-completed .step-label {
+      color: var(--success);
+    }
+    
+    .step-line {
+      position: absolute;
+      top: 15px;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background-color: var(--neutral-200);
+      z-index: 0;
+    }
+    
+    .step:first-child .step-line {
+      left: 50%;
+      width: 50%;
+    }
+    
+    .step:last-child .step-line {
+      width: 50%;
+    }
+    
+    .loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 0;
+    }
+    
+    .spinner {
+      border: 3px solid rgba(0, 0, 0, 0.1);
+      border-radius: 50%;
+      border-top: 3px solid var(--primary);
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 1rem;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .fade-in {
+      animation: fadeIn 0.5s ease-in-out;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .payment-badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      margin-left: 0.5rem;
+    }
+    
+    .payment-badge-visa {
+      background-color: rgba(25, 118, 210, 0.1);
+      color: #1976d2;
+    }
+    
+    .payment-badge-bank {
+      background-color: rgba(46, 125, 50, 0.1);
+      color: #2e7d32;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-container">
+      <a href="/" class="logo">
+        <i class="fas fa-wallet"></i>
+        bPay
+      </a>
+      <nav>
+        <a href="/"><i class="fas fa-home"></i> Home</a>
+        <a href="/dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="steps">
+      <div class="step step-completed">
+        <div class="step-line"></div>
+        <div class="step-number">
+          <i class="fas fa-check"></i>
+        </div>
+        <div class="step-label">Cart</div>
+      </div>
+      <div class="step step-active">
+        <div class="step-line"></div>
+        <div class="step-number">2</div>
+        <div class="step-label">Payment</div>
+      </div>
+      <div class="step">
+        <div class="step-line"></div>
+        <div class="step-number">3</div>
+        <div class="step-label">Confirmation</div>
+      </div>
+    </div>
+
+    <div class="checkout-container">
+      <div class="payment-section">
+        <div class="card fade-in">
+          <h1><i class="fas fa-credit-card"></i> Payment Distribution</h1>
+          <p class="mb-4">Split your payment across multiple sources for greater flexibility and control.</p>
+          
+          <div id="payment-methods">
+            <div class="actions" style="justify-content: flex-start; margin-bottom: 1.5rem;">
+              <button class="button" id="payEqualButton">
+                <i class="fas fa-balance-scale"></i> Split 50/50
+              </button>
+              <button class="button button-secondary" id="customSplitButton" style="margin-left: 1rem;">
+                <i class="fas fa-sliders-h"></i> Custom Split
+              </button>
+              <button class="button button-secondary" id="resetButton" style="margin-left: 1rem;">
+                <i class="fas fa-redo-alt"></i> Reset
+              </button>
+            </div>
+            
+            <div id="splitSlider" style="margin-bottom: 1.5rem; display: none;">
+              <label><strong>Adjust Payment Split</strong></label>
+              <div style="display: flex; align-items: center; margin-top: 0.5rem;">
+                <div style="width: 60px; text-align: right; margin-right: 0.5rem;">
+                  <span id="cardPercent">65%</span>
+                </div>
+                <input type="range" min="0" max="100" value="65" id="splitRangeSlider" style="flex-grow: 1;">
+                <div style="width: 60px; text-align: left; margin-left: 0.5rem;">
+                  <span id="bankPercent">35%</span>
+                </div>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-top: 0.25rem; font-size: 0.8rem; color: var(--neutral-500);">
+                <div><i class="fab fa-cc-visa"></i> Card</div>
+                <div><i class="fas fa-university"></i> Bank</div>
+              </div>
+            </div>
+            
+            <div class="payment-method fade-in">
+              <div class="payment-method-header">
+                <div class="payment-method-info">
+                  <div class="payment-method-logo">
+                    <i class="fab fa-cc-visa"></i>
+                  </div>
+                  <div class="payment-method-details">
+                    <h3>Visa ending in 4242 <span class="payment-badge payment-badge-visa">Credit</span></h3>
+                    <div class="payment-method-type">Available Balance: $1,450.00</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="payment-inputs">
+                <div>
+                  <label>Amount ($)</label>
+                  <input type="number" min="0" step="0.01" value="36.65" id="card-amount">
+                </div>
+                <div>
+                  <label>Percentage (%)</label>
+                  <input type="number" min="0" max="100" value="50" id="card-percent">
+                </div>
+              </div>
+              
+              <div class="payment-progress">
+                <div class="payment-progress-fill" id="card-progress" style="width: 50%;"></div>
+              </div>
+            </div>
+            
+            <div class="payment-method fade-in" style="animation-delay: 0.1s;">
+              <div class="payment-method-header">
+                <div class="payment-method-info">
+                  <div class="payment-method-logo">
+                    <i class="fas fa-university"></i>
+                  </div>
+                  <div class="payment-method-details">
+                    <h3>Bank Account ending in 6789 <span class="payment-badge payment-badge-bank">Bank</span></h3>
+                    <div class="payment-method-type">Available Balance: $3,200.00</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="payment-inputs">
+                <div>
+                  <label>Amount ($)</label>
+                  <input type="number" min="0" step="0.01" value="36.65" id="bank-amount">
+                </div>
+                <div>
+                  <label>Percentage (%)</label>
+                  <input type="number" min="0" max="100" value="50" id="bank-percent">
+                </div>
+              </div>
+              
+              <div class="payment-progress">
+                <div class="payment-progress-fill" id="bank-progress" style="width: 50%;"></div>
+              </div>
+            </div>
+            
+            <div class="card" style="margin-top: 2rem; margin-bottom: 0;">
+              <h2><i class="fas fa-check-circle"></i> Payment Summary</h2>
+              
+              <div id="allocation-status" class="allocation-status status-success">
+                <i class="fas fa-check-circle"></i>
+                Payment fully allocated
+              </div>
+              
+              <div class="actions">
+                <a href="/dashboard" class="button button-secondary">
+                  <i class="fas fa-arrow-left"></i> Back
+                </a>
+                <button class="button" onclick="showLoading()" id="processButton">
+                  <i class="fas fa-lock"></i> Process Payment
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <div id="loading" style="display: none;" class="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 1rem; font-weight: 500;">Processing your payment...</p>
+            <p style="color: var(--neutral-500); font-size: 0.9rem; margin-top: 0.5rem;">Please do not refresh this page.</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="checkout-summary">
+        <div class="card fade-in" style="animation-delay: 0.2s;">
+          <h2><i class="fas fa-shopping-cart"></i> Order Summary</h2>
+          <div class="summary">
+            <div class="row">
+              <span>Product Total:</span>
+              <span>$59.99</span>
+            </div>
+            <div class="row">
+              <span>Shipping:</span>
+              <span>$8.95</span>
+            </div>
+            <div class="row">
+              <span>Tax:</span>
+              <span>$4.36</span>
+            </div>
+            <div class="row total">
+              <span>Cart Total:</span>
+              <span>$73.30</span>
+            </div>
+          </div>
+          
+          <div class="summary" style="background-color: rgba(79, 70, 229, 0.05); border: 1px solid rgba(79, 70, 229, 0.1);">
+            <div class="row">
+              <span>bPay Service Fee (2.5%):</span>
+              <span id="service-fee">$1.83</span>
+            </div>
+            <div class="row total">
+              <span>Total to be Charged:</span>
+              <span id="total-with-fee">$75.13</span>
+            </div>
+            <div style="font-size: 0.85rem; color: var(--neutral-600); margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed var(--neutral-200);">
+              <i class="fas fa-info-circle"></i> The service fee will be added to your total charged amount. Your virtual card will be loaded with the exact cart total of $73.30.
+            </div>
+          </div>
+          
+          <div class="summary" style="background-color: rgba(79, 70, 229, 0.05); border: 1px solid rgba(79, 70, 229, 0.1);">
+            <div class="row">
+              <span>Total Allocated:</span>
+              <span id="total-allocated">$75.13</span>
+            </div>
+            <div class="row" id="remaining-row">
+              <span>Remaining:</span>
+              <span id="remaining">$0.00</span>
+            </div>
+          </div>
+          
+          <div style="margin-top: 1.5rem; font-size: 0.9rem; color: var(--neutral-600);">
+            <p><i class="fas fa-shield-alt"></i> All transactions are secure and encrypted.</p>
+            <p style="margin-top: 0.5rem;"><i class="fas fa-credit-card"></i> We accept all major credit cards and bank accounts.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const cartTotal = 73.30;
+    const serviceFeePercent = 2.5;
+    const serviceFee = (cartTotal * serviceFeePercent / 100).toFixed(2);
+    const totalWithFee = (parseFloat(cartTotal) + parseFloat(serviceFee)).toFixed(2);
+    
+    // Set total with fee in the UI
+    document.getElementById('service-fee').textContent = '$' + serviceFee;
+    document.getElementById('total-with-fee').textContent = '$' + totalWithFee;
+    
+    const totalAmount = parseFloat(totalWithFee);
+    const cardAmountInput = document.getElementById('card-amount');
+    const cardPercentInput = document.getElementById('card-percent');
+    const bankAmountInput = document.getElementById('bank-amount');
+    const bankPercentInput = document.getElementById('bank-percent');
+    const cardProgress = document.getElementById('card-progress');
+    const bankProgress = document.getElementById('bank-progress');
+    const totalAllocatedEl = document.getElementById('total-allocated');
+    const remainingEl = document.getElementById('remaining');
+    const remainingRow = document.getElementById('remaining-row');
+    const allocationStatus = document.getElementById('allocation-status');
+    const processButton = document.getElementById('processButton');
+    const payEqualButton = document.getElementById('payEqualButton');
+    const resetButton = document.getElementById('resetButton');
+    
+    // Set initial values that encourage customizing the split
+    // Default to a 65% / 35% initial split rather than 50/50
+    cardAmountInput.value = (totalAmount * 0.65).toFixed(2);
+    cardPercentInput.value = '65.00';
+    bankAmountInput.value = (totalAmount * 0.35).toFixed(2);
+    bankPercentInput.value = '35.00';
+    
+    // Initialize
+    updateUI();
+    
+    // Event listeners for amount updates
+    cardAmountInput.addEventListener('input', () => {
+      const amount = parseFloat(cardAmountInput.value) || 0;
+      const percentage = (amount / totalAmount) * 100;
+      cardPercentInput.value = percentage.toFixed(2);
+      cardProgress.style.width = `${percentage}%`;
+      updateUI();
+    });
+    
+    bankAmountInput.addEventListener('input', () => {
+      const amount = parseFloat(bankAmountInput.value) || 0;
+      const percentage = (amount / totalAmount) * 100;
+      bankPercentInput.value = percentage.toFixed(2);
+      bankProgress.style.width = `${percentage}%`;
+      updateUI();
+    });
+    
+    // Event listeners for percentage updates
+    cardPercentInput.addEventListener('input', () => {
+      const percentage = parseFloat(cardPercentInput.value) || 0;
+      const amount = (percentage / 100) * totalAmount;
+      cardAmountInput.value = amount.toFixed(2);
+      cardProgress.style.width = `${percentage}%`;
+      updateUI();
+    });
+    
+    bankPercentInput.addEventListener('input', () => {
+      const percentage = parseFloat(bankPercentInput.value) || 0;
+      const amount = (percentage / 100) * totalAmount;
+      bankAmountInput.value = amount.toFixed(2);
+      bankProgress.style.width = `${percentage}%`;
+      updateUI();
+    });
+    
+    // Split payment 50/50
+    payEqualButton.addEventListener('click', () => {
+      const equalAmount = (totalAmount / 2).toFixed(2);
+      const equalPercentage = '50.00';
+      
+      // Set values
+      cardAmountInput.value = equalAmount;
+      cardPercentInput.value = equalPercentage;
+      bankAmountInput.value = equalAmount;
+      bankPercentInput.value = equalPercentage;
+      
+      // Update UI
+      cardProgress.style.width = '50%';
+      bankProgress.style.width = '50%';
+      document.getElementById('splitRangeSlider').value = 50;
+      document.getElementById('cardPercent').textContent = '50%';
+      document.getElementById('bankPercent').textContent = '50%';
+      updateUI();
+      
+      // Animation feedback
+      animateElement(cardAmountInput);
+      animateElement(bankAmountInput);
+    });
+    
+    // Custom split button
+    const customSplitButton = document.getElementById('customSplitButton');
+    const splitSlider = document.getElementById('splitSlider');
+    const splitRangeSlider = document.getElementById('splitRangeSlider');
+    const cardPercentDisplay = document.getElementById('cardPercent');
+    const bankPercentDisplay = document.getElementById('bankPercent');
+    
+    customSplitButton.addEventListener('click', () => {
+      if (splitSlider.style.display === 'none') {
+        splitSlider.style.display = 'block';
+        // Set slider to match current card percentage
+        const currentPercent = parseFloat(cardPercentInput.value) || 65;
+        splitRangeSlider.value = currentPercent;
+        cardPercentDisplay.textContent = `${Math.round(currentPercent)}%`;
+        bankPercentDisplay.textContent = `${Math.round(100 - currentPercent)}%`;
+      } else {
+        splitSlider.style.display = 'none';
+      }
+    });
+    
+    // Slider for adjusting payment split
+    splitRangeSlider.addEventListener('input', () => {
+      const cardPercent = parseInt(splitRangeSlider.value);
+      const bankPercent = 100 - cardPercent;
+      
+      // Update displays
+      cardPercentDisplay.textContent = `${cardPercent}%`;
+      bankPercentDisplay.textContent = `${bankPercent}%`;
+      
+      // Update input fields
+      cardPercentInput.value = cardPercent.toFixed(2);
+      bankPercentInput.value = bankPercent.toFixed(2);
+      
+      // Update amounts
+      cardAmountInput.value = ((cardPercent / 100) * totalAmount).toFixed(2);
+      bankAmountInput.value = ((bankPercent / 100) * totalAmount).toFixed(2);
+      
+      // Update progress bars
+      cardProgress.style.width = `${cardPercent}%`;
+      bankProgress.style.width = `${bankPercent}%`;
+      
+      updateUI();
+    });
+    
+    // Reset allocations
+    resetButton.addEventListener('click', () => {
+      cardAmountInput.value = '0.00';
+      cardPercentInput.value = '0.00';
+      bankAmountInput.value = '0.00';
+      bankPercentInput.value = '0.00';
+      
+      cardProgress.style.width = '0%';
+      bankProgress.style.width = '0%';
+      updateUI();
+      
+      // Animation feedback
+      animateElement(cardAmountInput);
+      animateElement(bankAmountInput);
+    });
+    
+    // Main function to update UI based on current values
+    function updateUI() {
+      const cardAmount = parseFloat(cardAmountInput.value) || 0;
+      const bankAmount = parseFloat(bankAmountInput.value) || 0;
+      
+      const totalAllocated = cardAmount + bankAmount;
+      const remaining = totalAmount - totalAllocated;
+      
+      totalAllocatedEl.textContent = '$' + totalAllocated.toFixed(2);
+      remainingEl.textContent = '$' + Math.max(0, remaining).toFixed(2);
+      
+      // Update allocation status
+      if (Math.abs(remaining) < 0.01) {
+        // Fully allocated
+        allocationStatus.className = 'allocation-status status-success';
+        allocationStatus.innerHTML = '<i class="fas fa-check-circle"></i> Payment fully allocated';
+        processButton.disabled = false;
+        processButton.style.opacity = '1';
+        remainingRow.style.color = 'var(--neutral-600)';
+      } else if (remaining < 0) {
+        // Over-allocated
+        allocationStatus.className = 'allocation-status status-warning';
+        allocationStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Amount exceeds total by $' + Math.abs(remaining).toFixed(2);
+        processButton.disabled = true;
+        processButton.style.opacity = '0.5';
+        remainingRow.style.color = 'var(--danger)';
+      } else {
+        // Under-allocated
+        allocationStatus.className = 'allocation-status status-warning';
+        allocationStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> $' + remaining.toFixed(2) + ' still unallocated';
+        processButton.disabled = true;
+        processButton.style.opacity = '0.5';
+        remainingRow.style.color = 'var(--warning)';
+      }
+    }
+    
+    // Helper function to animate an element briefly
+    function animateElement(element) {
+      element.style.transition = 'background-color 0.3s';
+      element.style.backgroundColor = 'rgba(79, 70, 229, 0.1)';
+      setTimeout(() => {
+        element.style.backgroundColor = '';
+      }, 500);
+    }
+    
+    // Handle form submission
+    function showLoading() {
+      // Validate allocation
+      const cardAmount = parseFloat(cardAmountInput.value) || 0;
+      const bankAmount = parseFloat(bankAmountInput.value) || 0;
+      const totalAllocated = cardAmount + bankAmount;
+      
+      if (Math.abs(totalAllocated - totalAmount) > 0.01) {
+        alert('Please ensure your payment is fully allocated before proceeding.');
+        return;
+      }
+      
+      // Show loading state
+      document.getElementById('payment-methods').style.display = 'none';
+      document.getElementById('loading').style.display = 'flex';
+      
+      // Simulate payment processing with increasing progress messages
+      let progress = 0;
+      const progressMessages = [
+        'Verifying payment methods...',
+        'Processing credit card payment...',
+        'Processing bank account transfer...',
+        'Creating virtual card...',
+        'Finalizing transaction...'
+      ];
+      
+      const loadingText = document.querySelector('#loading p');
+      const interval = setInterval(() => {
+        if (progress < progressMessages.length) {
+          loadingText.textContent = progressMessages[progress];
+          progress++;
+        } else {
+          clearInterval(interval);
+          // Redirect to success page
+          window.location.href = '/checkout/success';
+        }
+      }, 800);
+    }
+  </script>
+</body>
+</html>

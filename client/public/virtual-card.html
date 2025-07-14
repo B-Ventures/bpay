@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>bPay - Create Virtual Card</title>
+  <meta name="description" content="Create a new virtual card funded from multiple payment sources.">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      margin: 0;
+      padding: 0;
+      color: #333;
+      line-height: 1.6;
+      background-color: #f8f9fa;
+    }
+    .navbar {
+      background: linear-gradient(135deg, #1a237e, #283593);
+      color: white;
+      padding: 1rem 0;
+    }
+    .container {
+      width: 90%;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .nav-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo {
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+    .nav-links {
+      display: flex;
+    }
+    .nav-link {
+      color: white;
+      text-decoration: none;
+      margin-left: 1.5rem;
+      font-weight: 500;
+    }
+    .main-content {
+      padding: 2rem 0;
+    }
+    .page-header {
+      margin-bottom: 2rem;
+    }
+    .page-title {
+      font-size: 1.8rem;
+      margin-bottom: 0.5rem;
+    }
+    .page-subtitle {
+      color: #666;
+    }
+    .card-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2rem;
+    }
+    .card-preview {
+      flex: 1;
+      min-width: 300px;
+    }
+    .card-form {
+      flex: 2;
+      min-width: 300px;
+    }
+    .form-card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .form-card-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0 0 1.5rem 0;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid #eee;
+    }
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+    input, select {
+      width: 100%;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    input:focus, select:focus {
+      border-color: #1a237e;
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(26, 35, 126, 0.2);
+    }
+    .form-actions {
+      margin-top: 2rem;
+      display: flex;
+      justify-content: flex-end;
+      gap: 1rem;
+    }
+    .btn {
+      display: inline-block;
+      background: #4CAF50;
+      color: white;
+      text-decoration: none;
+      padding: 0.8rem 1.5rem;
+      border-radius: 4px;
+      font-weight: 600;
+      transition: background-color 0.3s;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .btn:hover {
+      background: #388E3C;
+    }
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #333;
+    }
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+    .virtual-card {
+      background: linear-gradient(135deg, #1a237e, #2196f3);
+      color: white;
+      border-radius: 16px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      position: relative;
+      overflow: hidden;
+      height: 200px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    
+    /* Checkbox and radio styles */
+    .checkbox-container, .radio-container {
+      padding: 0.5rem 0;
+    }
+    
+    .checkbox-container input[type="checkbox"],
+    .radio-container input[type="radio"] {
+      margin-right: 0.5rem;
+    }
+    
+    .radio-container > div {
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+    }
+    .card-chip {
+      position: absolute;
+      width: 45px;
+      height: 35px;
+      background: linear-gradient(to bottom, #cba135, #f2d57e);
+      border-radius: 5px;
+      top: 90px;
+      left: 30px;
+    }
+    .card-background {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      opacity: 0.05;
+      background-size: 300px;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .card-logo {
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+    .card-network {
+      font-style: italic;
+      opacity: 0.8;
+    }
+    .card-number {
+      font-family: monospace;
+      font-size: 1.1rem;
+      letter-spacing: 2px;
+      margin: 1rem 0;
+    }
+    .card-details {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      margin-top: auto;
+    }
+    .card-name {
+      text-transform: uppercase;
+    }
+    .payment-source {
+      display: flex;
+      align-items: center;
+      padding: 1rem;
+      border: 1px solid #eee;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+    .payment-source-icon {
+      background: #f5f5f5;
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 1rem;
+      font-size: 1.2rem;
+    }
+    .payment-source-details {
+      flex: 1;
+    }
+    .payment-source-name {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .payment-source-info {
+      color: #666;
+      font-size: 0.9rem;
+    }
+    .payment-source-amount {
+      margin-left: 1rem;
+      font-weight: 600;
+    }
+    .payment-source-amount input {
+      width: 120px;
+      margin-left: 0.5rem;
+    }
+    .payment-total {
+      display: flex;
+      justify-content: space-between;
+      padding: 1rem;
+      margin-top: 1rem;
+      border-top: 2px solid #eee;
+      font-weight: 600;
+    }
+    .payment-error {
+      color: #d32f2f;
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+    }
+    .payment-success {
+      color: #388E3C;
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      border: 2px dashed #ddd;
+      border-radius: 8px;
+      color: #666;
+    }
+    .empty-state-icon {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      color: #ddd;
+    }
+    
+    @media (max-width: 768px) {
+      .card-container {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <div class="nav-content">
+        <div class="logo">bPay</div>
+        <div class="nav-links">
+          <a href="/dashboard" class="nav-link">Dashboard</a>
+          <a href="/payment-methods" class="nav-link">Payment Methods</a>
+          <a href="/api/logout" class="nav-link">Logout</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+  
+  <div class="main-content">
+    <div class="container">
+      <div class="page-header">
+        <h1 class="page-title">Create Virtual Card</h1>
+        <p class="page-subtitle">Create a virtual card funded from multiple payment sources.</p>
+      </div>
+      
+      <div class="card-container">
+        <div class="card-preview">
+          <div class="virtual-card">
+            <div class="card-background"></div>
+            <div class="card-header">
+              <div class="card-logo">bPay</div>
+              <div class="card-network">VIRTUAL</div>
+            </div>
+            <div class="card-chip"></div>
+            <div class="card-number" id="preview-card-number">**** **** **** ****</div>
+            <div class="card-details">
+              <div class="card-name" id="preview-card-name">YOUR NAME</div>
+              <div class="card-expire" id="preview-card-expire">MM/YY</div>
+            </div>
+          </div>
+          
+          <div class="form-card" style="margin-top: 2rem;">
+            <h3 class="form-card-title">Card Information</h3>
+            <div class="form-group">
+              <label for="card-name">Card Nickname</label>
+              <input type="text" id="card-name" placeholder="e.g., Shopping Card, Travel Expenses" required>
+            </div>
+            
+            <div class="form-group">
+              <label for="cardholder-name">Name on Card</label>
+              <input type="text" id="cardholder-name" placeholder="e.g., John Smith" required>
+            </div>
+            
+            <div class="form-group">
+              <label for="card-amount">Total Amount (Optional)</label>
+              <input type="number" id="card-amount" min="10" step="0.01" placeholder="0.00">
+            </div>
+            
+
+            
+            <div class="form-group">
+              <div class="radio-container">
+                <div>
+                  <input type="radio" id="multiple-use" name="card-usage" value="multiple" checked>
+                  <label for="multiple-use">Multiple-use card</label>
+                </div>
+                <div>
+                  <input type="radio" id="one-time-use" name="card-usage" value="one-time">
+                  <label for="one-time-use">One-time use only</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="card-form">
+          <div class="form-card">
+            <h3 class="form-card-title">Funding Sources</h3>
+            
+            <div id="payment-sources-container">
+              <!-- Payment sources will be loaded here -->
+              <div class="empty-state">
+                <div class="empty-state-icon">💰</div>
+                <p>No payment methods available.</p>
+                <p>Add payment methods to continue.</p>
+                <a href="/payment-methods" class="btn">Add Payment Method</a>
+              </div>
+            </div>
+            
+            <div id="split-payments-container" style="display: none;">
+              <div id="funding-sources-list"></div>
+              
+              <div class="payment-total">
+                <div>Total Amount:</div>
+                <div id="total-amount">$0.00</div>
+              </div>
+              
+              <div id="payment-error" class="payment-error"></div>
+              <div id="payment-success" class="payment-success"></div>
+              
+              <div class="form-actions">
+                <a href="/dashboard" class="btn btn-secondary">Cancel</a>
+                <button id="save-card-button" class="btn btn-secondary">Save Card</button>
+                <button id="create-card-button" class="btn">Create Virtual Card</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Initialize variables
+    let paymentMethods = [];
+    let fundingSources = [];
+    
+    // Check if user is authenticated
+    async function checkAuth() {
+      try {
+        const response = await fetch('/api/user');
+        
+        if (!response.ok) {
+          // If not authenticated, redirect to login page
+          window.location.href = '/auth';
+          return null;
+        }
+        
+        return await response.json();
+      } catch (error) {
+        console.error('Auth check failed', error);
+        window.location.href = '/auth';
+        return null;
+      }
+    }
+    
+    // Load payment methods
+    async function loadPaymentMethods() {
+      try {
+        const response = await fetch('/api/payment-methods');
+        
+        if (!response.ok) {
+          throw new Error('Failed to load payment methods');
+        }
+        
+        paymentMethods = await response.json();
+        const container = document.getElementById('payment-sources-container');
+        const fundingList = document.getElementById('funding-sources-list');
+        
+        if (paymentMethods.length === 0) {
+          return; // Keep the empty state visible
+        }
+        
+        // Show split payments container
+        document.getElementById('split-payments-container').style.display = 'block';
+        
+        // Clear empty state
+        container.innerHTML = '';
+        
+        // Add each payment method with input for splitting
+        paymentMethods.forEach((method, index) => {
+          const methodElement = document.createElement('div');
+          methodElement.className = 'payment-source';
+          
+          // Set icon based on payment method type
+          let icon = '💳';
+          if (method.type === 'bank_account') icon = '🏦';
+          if (method.type === 'wallet') icon = '👛';
+          
+          // Add to funding sources with 0 amount initially
+          fundingSources.push({
+            id: method.id,
+            type: method.type,
+            amount: 0,
+            index: index
+          });
+          
+          methodElement.innerHTML = `
+            <div class="payment-source-icon">${icon}</div>
+            <div class="payment-source-details">
+              <div class="payment-source-name">${method.name || method.card.brand}</div>
+              <div class="payment-source-info">
+                ${method.card ? `**** ${method.card.last4} · Expires ${method.card.exp_month}/${method.card.exp_year}` : ''}
+              </div>
+            </div>
+            <div class="payment-source-amount">
+              <label for="amount-${index}">$</label>
+              <input type="number" id="amount-${index}" min="0" step="0.01" placeholder="0.00" 
+                     onchange="updateFundingAmount(${index}, this.value)">
+            </div>
+          `;
+          
+          fundingList.appendChild(methodElement);
+        });
+      } catch (error) {
+        console.error('Error loading payment methods', error);
+      }
+    }
+    
+    // Update funding amount for a payment source
+    function updateFundingAmount(index, value) {
+      const amount = parseFloat(value) || 0;
+      fundingSources[index].amount = amount;
+      
+      // Update total
+      updateTotalAmount();
+      
+      // Check if total matches required amount
+      validateTotalAmount();
+    }
+    
+    // Update the displayed total amount
+    function updateTotalAmount() {
+      const total = fundingSources.reduce((sum, source) => sum + source.amount, 0);
+      document.getElementById('total-amount').textContent = '$' + total.toFixed(2);
+    }
+    
+    // Validate that total funding equals card amount
+    function validateTotalAmount() {
+      const cardAmount = parseFloat(document.getElementById('card-amount').value) || 0;
+      const totalFunding = fundingSources.reduce((sum, source) => sum + source.amount, 0);
+      
+      const errorElement = document.getElementById('payment-error');
+      const successElement = document.getElementById('payment-success');
+      
+      // If no card amount is specified, don't validate
+      if (cardAmount === 0) {
+        errorElement.textContent = '';
+        successElement.textContent = '';
+        return true; // Return true since amount is optional
+      }
+      
+      if (totalFunding !== cardAmount) {
+        errorElement.textContent = `Total funding ($${totalFunding.toFixed(2)}) does not match card amount ($${cardAmount.toFixed(2)})`;
+        successElement.textContent = '';
+        return false;
+      } else {
+        errorElement.textContent = '';
+        successElement.textContent = 'Funding sources match card amount.';
+        return true;
+      }
+    }
+    
+    // Update card preview
+    function updateCardPreview() {
+      const cardholderName = document.getElementById('cardholder-name').value || 'YOUR NAME';
+      document.getElementById('preview-card-name').textContent = cardholderName.toUpperCase();
+      
+      // Generate random last 4 digits for preview
+      const lastFour = Math.floor(1000 + Math.random() * 9000).toString();
+      document.getElementById('preview-card-number').textContent = `**** **** **** ${lastFour}`;
+      
+      // Set expiry date (3 years from now)
+      const now = new Date();
+      const expYear = (now.getFullYear() + 3) % 100;
+      const expMonth = now.getMonth() + 1;
+      document.getElementById('preview-card-expire').textContent = 
+        `${expMonth.toString().padStart(2, '0')}/${expYear.toString().padStart(2, '0')}`;
+    }
+    
+    // Save card without funding
+    async function saveCard() {
+      console.log('Save Card button clicked');
+      // Validate inputs
+      const cardName = document.getElementById('card-name').value;
+      const cardholderName = document.getElementById('cardholder-name').value;
+      const isOneTime = document.getElementById('one-time-use').checked;
+      
+      console.log('Card details:', { cardName, cardholderName, isOneTime });
+      
+      if (!cardName || !cardholderName) {
+        document.getElementById('payment-error').textContent = 'Please provide required card information.';
+        return;
+      }
+      
+      try {
+        // Clear any previous error messages
+        document.getElementById('payment-error').textContent = '';
+        document.getElementById('payment-success').textContent = 'Saving card...';
+        
+        const requestData = {
+          name: cardName,
+          cardholderName: cardholderName,
+          amount: 0, // No funding yet
+          paymentSources: [], // No funding sources
+          isOneTime: isOneTime
+        };
+        
+        console.log('Sending request:', requestData);
+        
+        // Create the virtual card (saved but not funded)
+        const response = await fetch('/api/virtual-cards', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData)
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to save virtual card');
+        }
+        
+        const card = await response.json();
+        
+        // Save the cardholder name to local storage for future use
+        localStorage.setItem('preferredCardholderName', cardholderName);
+        
+        // Show success message
+        document.getElementById('payment-success').textContent = 'Card saved successfully. You can add payment methods later.';
+        
+        // Redirect to dashboard after a delay
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 2000);
+      } catch (error) {
+        document.getElementById('payment-error').textContent = error.message;
+      }
+    }
+    
+    // Create a virtual card with funding
+    async function createVirtualCard() {
+      // Validate inputs
+      const cardName = document.getElementById('card-name').value;
+      const cardholderName = document.getElementById('cardholder-name').value;
+      const cardAmount = parseFloat(document.getElementById('card-amount').value) || 0;
+      
+      if (!cardName || !cardholderName) {
+        document.getElementById('payment-error').textContent = 'Please provide required card information.';
+        return;
+      }
+      
+      // Only validate total amount if an amount is provided
+      if (cardAmount > 0 && !validateTotalAmount()) {
+        return;
+      }
+      
+      // Get funding sources with non-zero amounts
+      const activeFundingSources = fundingSources.filter(source => source.amount > 0);
+      
+      // Only require funding sources if an amount is provided
+      if (cardAmount > 0 && activeFundingSources.length === 0) {
+        document.getElementById('payment-error').textContent = 'Please allocate funds from at least one payment source.';
+        return;
+      }
+      
+      try {
+        // Get usage option
+        const isOneTime = document.getElementById('one-time-use').checked;
+        
+        const requestData = {
+            name: cardName,
+            cardholderName: cardholderName,
+            amount: cardAmount,
+            paymentSources: activeFundingSources,
+            isOneTime: isOneTime
+        };
+        
+        console.log('Creating virtual card with:', requestData);
+        
+        // Create the virtual card
+        const response = await fetch('/api/virtual-cards', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestData)
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to create virtual card');
+        }
+        
+        const card = await response.json();
+        
+        // Save the cardholder name to local storage for future use
+        localStorage.setItem('preferredCardholderName', cardholderName);
+        
+        // Redirect to dashboard
+        window.location.href = '/dashboard';
+      } catch (error) {
+        document.getElementById('payment-error').textContent = error.message;
+      }
+    }
+    
+    // Initialize the page
+    async function initPage() {
+      const user = await checkAuth();
+      
+      if (user) {
+        // Load payment methods
+        await loadPaymentMethods();
+        
+        // Check if we have a saved cardholder name
+        const savedCardholderName = localStorage.getItem('preferredCardholderName');
+        if (savedCardholderName) {
+          document.getElementById('cardholder-name').value = savedCardholderName;
+        }
+        
+        // Set up event listeners
+        document.getElementById('card-name').addEventListener('input', updateCardPreview);
+        document.getElementById('cardholder-name').addEventListener('input', updateCardPreview);
+        document.getElementById('card-amount').addEventListener('input', validateTotalAmount);
+        document.getElementById('create-card-button').addEventListener('click', createVirtualCard);
+        document.getElementById('save-card-button').addEventListener('click', saveCard);
+        
+        // Initialize card preview
+        updateCardPreview();
+      }
+    }
+    
+    // Start the page when DOM is loaded
+    window.addEventListener('DOMContentLoaded', initPage);
+  </script>
+</body>
+</html>
