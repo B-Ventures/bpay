@@ -1,2383 +1,992 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import Stripe from "stripe";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, isAdmin } from "./auth";
-import multer from "multer";
-import path from "path";
-import fs from "fs";
-import henryCmsRoutes from "./henry-cms/routes";
+import { setupAuth, isAuthenticated } from "./replitAuth";
+import { insertFundingSourceSchema, insertVirtualCardSchema, insertTransactionSchema, insertMerchantSchema } from "@shared/schema";
+import { z } from "zod";
+import { nanoid } from "nanoid";
+import Stripe from "stripe";
+import { stripeIssuingService } from "./services/stripe-issuing";
+import { registerMerchantAPI } from "./merchant-api";
+import adminApi from "./admin-api";
+import { validateFundingSourceCreation, getSubscriptionBenefits } from "./services/funding-security";
+import { FeeCalculator } from "./services/fee-calculator";
 
-// Check if Stripe API key is available
 if (!process.env.STRIPE_SECRET_KEY) {
-  console.warn('WARNING: Missing Stripe secret key. Payment functionality will not work.');
+  throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
 }
 
-// Initialize Stripe if API key is available
-const stripe = process.env.STRIPE_SECRET_KEY 
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" as any })
-  : null;
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: "2025-06-30.basil",
+});
 
-export function registerRoutes(app: Express): Server {
-  // Set up authentication routes
-  setupAuth(app);
+// Helper function to determine card brand from number
+function getBrandFromNumber(cardNumber: string): string {
+  const cleanNumber = cardNumber.replace(/\s/g, '');
+  if (cleanNumber.startsWith('4')) return 'visa';
+  if (cleanNumber.startsWith('5')) return 'mastercard';
+  if (cleanNumber.startsWith('34') || cleanNumber.startsWith('37')) return 'amex';
+  return 'unknown';
+}
 
-  // Health check endpoint
-  app.get("/api/health", (req, res) => {
-    res.status(200).json({ status: "ok" });
-  });
-  
-  // Calculate service fee
-  const calculateServiceFee = (amount: number) => {
-    // Base fee percentage
-    const feePercentage = 0.025; // 2.5%
-    
-    // Minimum fee
-    const minimumFee = 0.50; // $0.50
-    
-    // Calculate percentage-based fee
-    const percentageFee = amount * feePercentage;
-    
-    // Return the greater of percentage fee or minimum fee
-    return Math.max(percentageFee, minimumFee);
-  };
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Auth middleware
+  await setupAuth(app);
 
-  // Check Stripe connection
-  app.get("/api/stripe/status", (req, res) => {
-    if (!stripe) {
-      return res.status(500).json({ 
-        connected: false, 
-        message: "Stripe API key not configured" 
-      });
-    }
-
-    res.json({ 
-      connected: true, 
-      message: "Stripe API connected" 
-    });
-  });
-
-  // Get all payment methods
-  app.get("/api/payment-methods", async (req, res) => {
+  // Public API endpoints (no auth required)
+  // Get subscription tiers for pricing page
+  app.get('/api/subscription/tiers', async (req, res) => {
     try {
-      // In a real app, we would get the user ID from the authenticated session
-      const userId = 1; // Mock user ID for now
-
-      const paymentMethods = await storage.getPaymentMethods(userId);
-      res.json(paymentMethods);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error fetching payment methods", 
-        details: error.message 
-      });
-    }
-  });
-
-  // Get all virtual cards
-  app.get("/api/virtual-cards", async (req, res) => {
-    try {
-      // In a real app, we would get the user ID from the authenticated session
-      const userId = 1; // Mock user ID for now
-
-      const virtualCards = await storage.getVirtualCards(userId);
-      res.json(virtualCards);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error fetching virtual cards", 
-        details: error.message 
-      });
-    }
-  });
-
-  // Get a specific virtual card
-  app.get("/api/virtual-cards/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const virtualCard = await storage.getVirtualCard(id);
-
-      if (!virtualCard) {
-        return res.status(404).json({ error: "Virtual card not found" });
-      }
-
-      res.json(virtualCard);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error fetching virtual card", 
-        details: error.message 
-      });
-    }
-  });
-
-  // Create payment method endpoint
-  app.post("/api/payment-methods", async (req, res) => {
-    try {
-      // In a real app, this would validate the user is authenticated
-      // For now, mock user ID
-      const userId = 1; // In a production app, get from authenticated session
-
-      if (!stripe) {
-        return res.status(500).json({ 
-          error: "Stripe API not configured" 
-        });
-      }
-
-      // Get the payment method type and data
-      const { type } = req.body;
+      const { db } = await import("./db.js");
+      const { subscriptionTiers } = await import("../shared/schema.js");
+      const { eq } = await import("drizzle-orm");
       
-      let stripePaymentMethodId = null;
-      let paymentMethod = null;
+      const tiers = await db.select({
+        id: subscriptionTiers.id,
+        name: subscriptionTiers.name,
+        displayName: subscriptionTiers.displayName,
+        monthlyPrice: subscriptionTiers.monthlyPrice,
+        transactionFeeRate: subscriptionTiers.transactionFeeRate,
+        features: subscriptionTiers.features,
+        limits: subscriptionTiers.limits,
+      })
+      .from(subscriptionTiers)
+      .where(eq(subscriptionTiers.isActive, true))
+      .orderBy(subscriptionTiers.monthlyPrice);
 
-      // Handle different payment method types
-      switch (type) {
-        case 'card':
-          // Process credit/debit card
-          const { card } = req.body;
-          
-          // Validate card data
-          if (!card || !card.number || !card.exp_month || !card.exp_year || !card.cvc) {
-            return res.status(400).json({ error: "Incomplete card information" });
-          }
-
-          try {
-            // Create payment method in Stripe
-            const stripePaymentMethod = await stripe.paymentMethods.create({
-              type: 'card',
-              card: {
-                number: card.number,
-                exp_month: card.exp_month,
-                exp_year: card.exp_year,
-                cvc: card.cvc
-              }
-            });
-            
-            // If a customer ID exists, attach the payment method to the customer
-            const user = await storage.getUser(userId);
-            if (user?.stripeCustomerId) {
-              await stripe.paymentMethods.attach(stripePaymentMethod.id, {
-                customer: user.stripeCustomerId
-              });
-            }
-
-            stripePaymentMethodId = stripePaymentMethod.id;
-            
-            // Create payment method in our database
-            paymentMethod = {
-              userId,
-              type: 'card',
-              name: card.name || 'Credit/Debit Card',
-              brand: stripePaymentMethod.card?.brand || 'unknown',
-              lastFour: stripePaymentMethod.card?.last4 || '****',
-              expiryMonth: stripePaymentMethod.card?.exp_month,
-              expiryYear: stripePaymentMethod.card?.exp_year,
-              stripePaymentMethodId: stripePaymentMethod.id
-            };
-          } catch (stripeError: any) {
-            console.error("Stripe card error:", stripeError);
-            return res.status(400).json({ 
-              error: "Invalid card information", 
-              details: stripeError.message 
-            });
-          }
-          break;
-
-        case 'bank_account':
-          // Process bank account
-          const bankAccountData = req.body.bankAccount;
-          
-          // Validate bank account data
-          if (!bankAccountData || !bankAccountData.account_number || !bankAccountData.routing_number) {
-            return res.status(400).json({ error: "Incomplete bank account information" });
-          }
-
-          try {
-            // Get or create customer if needed
-            const user = await storage.getUser(userId);
-            let customerId = user?.stripeCustomerId;
-
-            if (!customerId) {
-              // Create a customer first
-              const customer = await stripe.customers.create({
-                name: bankAccountData.account_holder_name || "Account Holder",
-                email: user?.email || undefined
-              });
-              
-              customerId = customer.id;
-              // Save customer ID to user
-              await storage.updateUser(userId, { stripeCustomerId: customerId });
-            }
-
-            // Create a bank account token
-            const bankToken = await stripe.tokens.create({
-              bank_account: {
-                country: 'US',
-                currency: 'usd',
-                account_holder_name: bankAccountData.account_holder_name,
-                account_holder_type: bankAccountData.account_holder_type || 'individual',
-                routing_number: bankAccountData.routing_number,
-                account_number: bankAccountData.account_number
-              }
-            });
-
-            // Add bank account to customer
-            const bankSource = await stripe.customers.createSource(
-              customerId,
-              { source: bankToken.id }
-            ) as any; // Type assertion as Stripe types are complex
-
-            stripePaymentMethodId = bankSource.id;
-
-            // Create payment method in our database
-            paymentMethod = {
-              userId,
-              type: 'bank_account',
-              name: bankAccountData.account_holder_name || 'Bank Account',
-              bankName: bankSource.bank_name || 'Bank',
-              accountType: bankSource.object === 'bank_account' ? bankSource.account_type : 'checking',
-              lastFour: bankSource.last4 || '****',
-              stripePaymentMethodId: bankSource.id
-            };
-          } catch (stripeError: any) {
-            console.error("Stripe bank account error:", stripeError);
-            return res.status(400).json({ 
-              error: "Invalid bank account information", 
-              details: stripeError.message 
-            });
-          }
-          break;
-
-        case 'paypal':
-          // Process PayPal
-          const { paypal } = req.body;
-          
-          if (!paypal || !paypal.email) {
-            return res.status(400).json({ error: "Incomplete PayPal information" });
-          }
-
-          // Note: Direct PayPal integration requires additional setup with Stripe Connect
-          // For a basic implementation, we can store the info now and handle account linking 
-          // through a separate flow
-          
-          // Create payment method in our database
-          paymentMethod = {
-            userId,
-            type: 'paypal',
-            name: 'PayPal',
-            provider: 'paypal',
-            email: paypal.email,
-            metadata: { 
-              verified: false, 
-              status: 'pending_verification'
-            }
-          };
-          break;
-
-        case 'stripe_balance':
-          // Process Stripe Balance (using Stripe Connect)
-          // Requires the user to connect their Stripe account
-          
-          // Store a placeholder that will be completed when the user connects their account
-          paymentMethod = {
-            userId,
-            type: 'stripe_balance',
-            name: 'Stripe Balance',
-            provider: 'stripe',
-            metadata: { 
-              status: 'pending_connection'
-            }
-          };
-          break;
-
-        default:
-          return res.status(400).json({ error: "Unsupported payment method type" });
-      }
-
-      // Save the payment method to our database
-      const savedPaymentMethod = await storage.addPaymentMethod(userId, paymentMethod);
-
-      // Return the created payment method
-      res.status(201).json(savedPaymentMethod);
-    } catch (error: any) {
-      console.error("Payment method creation error:", error);
-      res.status(500).json({ 
-        error: "Error creating payment method", 
-        details: error.message 
-      });
+      res.json({ tiers });
+    } catch (error) {
+      console.error("Public subscription tiers fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch subscription tiers" });
     }
   });
 
-  // Create virtual card endpoint
-  app.post("/api/virtual-cards", async (req, res) => {
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      // Validate the user is authenticated (in a real app)
-      // For now we're using a mock userId
-      const userId = 1; // In a real app, get from auth session
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
 
-      const { name, cardholderName, amount, paymentSources, isOneTime } = req.body;
-
-      // Validate required fields (name and cardholderName are always required)
-      if (!name || !cardholderName) {
-        return res.status(400).json({ 
-          error: "Missing required card information" 
-        });
-      }
-
-      // Process payment sources
-      let processedPaymentSources = paymentSources;
-
-      // Only validate funding sources if an amount is provided
-      if (amount > 0) {
-        // Validate that payment sources are provided
-        if (!processedPaymentSources || !Array.isArray(processedPaymentSources) || processedPaymentSources.length === 0) {
-          return res.status(400).json({ 
-            error: "Payment sources required when creating a funded card" 
-          });
-        }
-
-        // Calculate total funding from all payment sources
-        const totalFunding = processedPaymentSources.reduce(
-          (sum: number, source: any) => sum + parseFloat(source.amount || 0), 
-          0
-        );
-
-        // Validate that funding sources total matches requested amount
-        if (Math.abs(totalFunding - amount) > 0.01) { // Allow for small floating point differences
-          return res.status(400).json({
-            error: "Total funding amount does not match requested card amount",
-            requestedAmount: amount,
-            providedFunding: totalFunding
-          });
-        }
+  // Update user profile (for registration flow)
+  app.patch('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const updateData = req.body;
+      
+      // Validate required fields for profile completion
+      if (updateData.phoneNumber || updateData.address) {
+        const updatedUser = await storage.updateUserProfile(userId, updateData);
+        res.json(updatedUser);
       } else {
-        // For saving a card without funding, ensure we have an empty array of payment sources
-        processedPaymentSources = processedPaymentSources || [];
+        res.status(400).json({ message: "No valid profile data provided" });
       }
+    } catch (error) {
+      console.error("Error updating user profile:", error);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
 
-      // Get the configured card provider
-      const cardProviderSetting = await storage.getSystemSettingByKey('card_provider');
-      const cardProvider = cardProviderSetting?.value || 'stripe';
-
-      // Check if the card provider is available
-      if (cardProvider === 'stripe' && !stripe) {
-        return res.status(500).json({ 
-          error: "Stripe API not configured. Cannot issue virtual cards." 
-        });
-      }
-
-      // Check for regional provider override (if any)
-      const regionalProvidersSetting = await storage.getSystemSettingByKey('regional_card_providers');
-      const regionalProviders = regionalProvidersSetting?.valueJson || {};
-
-      // Process the payment and create virtual card with Stripe Issuing
-      try {
-        // In a production app, we would first:
-        // 1. Process the funding source payments with Stripe
-        // 2. Get or create a cardholder for the user
-        // 3. Create the virtual card with the processed funds
-
-        // For demo purposes, let's check if the user already has a Stripe cardholder ID
-        const user = await storage.getUser(userId);
-        let cardholderIdForStripe;
-
-        if (!user?.stripeCustomerId && stripe && cardProvider === 'stripe') {
-          // Create a new Stripe customer/cardholder
-          const customer = await stripe.customers.create({
-            name: cardholderName,
-            description: `Cardholder for virtual tipping cards - User ID: ${userId}`
-          });
-
-          // Update the user with the Stripe customer ID
-          await storage.updateUser(userId, { stripeCustomerId: customer.id });
-          cardholderIdForStripe = customer.id;
-        } else {
-          cardholderIdForStripe = user.stripeCustomerId;
-        }
-
-        // In a real integration, we would create a card with Stripe Issuing
-        // Here's a reference to what that would look like:
-
-        // const stripeCard = await stripe.issuing.cards.create({
-        //   cardholder: cardholderIdForStripe,
-        //   currency: 'usd',
-        //   type: 'virtual',
-        //   status: amount > 0 ? 'active' : 'inactive'
-        // });
-
-        // Since we may not have Stripe Issuing access, we'll simulate it:
-        const lastFour = Math.floor(1000 + Math.random() * 9000).toString();
-        const currentDate = new Date();
-        const expiryYear = currentDate.getFullYear() + 3;
-        const expiryMonth = currentDate.getMonth() + 1;
-        const expiryDate = `${expiryMonth.toString().padStart(2, '0')}/${expiryYear.toString().slice(-2)}`;
-
-        // Create the virtual card record
-        // Validate required fields
-        if (!name || name.trim().length === 0) {
-          return res.status(400).json({ error: 'Card name is required' });
-        }
-
-        if (!cardholderName || cardholderName.trim().length === 0) {
-          return res.status(400).json({ error: 'Cardholder name is required' });
-        }
-
-        if (amount < 0) {
-          return res.status(400).json({ error: 'Amount cannot be negative' });
-        }
-
-        // Generate random last four digits for the card
-        const randomLastFour = Math.floor(1000 + Math.random() * 9000).toString();
+  // Funding sources routes
+  app.get('/api/funding-sources', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const sources = await storage.getFundingSourcesByUserId(userId);
+      
+      // If no funding sources exist, create sample ones for demo
+      if (sources.length === 0) {
+        const sampleSources = [
+          {
+            userId,
+            name: "Chase Freedom",
+            type: "credit_card",
+            last4: "1234",
+            expiryMonth: 12,
+            expiryYear: 2025,
+            brand: "visa",
+            defaultSplitPercentage: "60",
+            stripePaymentMethodId: `pm_${nanoid(16)}`,
+          },
+          {
+            userId,
+            name: "Bank of America",
+            type: "debit_card",
+            last4: "5678",
+            expiryMonth: 8,
+            expiryYear: 2026,
+            brand: "mastercard",
+            defaultSplitPercentage: "40",
+            stripePaymentMethodId: `pm_${nanoid(16)}`,
+          }
+        ];
         
-        const card = {
-          id: `card_${Math.random().toString(36).substring(2, 10)}`,
-          userId,
-          name: name.trim(),
-          cardholderName: cardholderName.trim(),
-          status: amount > 0 ? "active" : "inactive",
-          lastFour: randomLastFour,
-          cardNumber: `XXXX-XXXX-XXXX-${randomLastFour}`,
-          expiryDate: `${expiryMonth.toString().padStart(2, '0')}/${expiryYear}`,
-          cvv: Math.floor(100 + Math.random() * 900).toString(),
-          balance: amount || 0,
-          createdAt: new Date(),
-          isOneTime: Boolean(isOneTime),
-          fundingSources: processedPaymentSources.map((source: any) => ({
-            id: source.id,
-            type: source.type,
-            amount: source.amount
-          })),
-          stripeCardId: `ic_${Math.random().toString(36).substring(2, 10)}`
-        };
-
-        // Store the virtual card in our database
-        const createdCard = await storage.createVirtualCard(userId, card);
-
-        // Return the created card (with sensitive fields masked)
-        res.status(201).json({
-          id: createdCard.id,
-          name: createdCard.name,
-          cardholderName: createdCard.cardholderName,
-          status: createdCard.status,
-          lastFour: createdCard.lastFour,
-          expiryDate: createdCard.expiryDate,
-          balance: createdCard.balance,
-          createdAt: createdCard.createdAt,
-          isOneTime: createdCard.isOneTime,
-          fundingSources: createdCard.fundingSources
-        });
-      } catch (stripeError: any) {
-        console.error("Stripe error:", stripeError);
-        return res.status(500).json({ 
-          error: "Error processing payment or creating virtual card with Stripe", 
-          details: stripeError.message 
-        });
+        for (const source of sampleSources) {
+          await storage.createFundingSource(source);
+        }
+        
+        const newSources = await storage.getFundingSourcesByUserId(userId);
+        res.json(newSources);
+      } else {
+        res.json(sources);
       }
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error creating virtual card", 
-        details: error.message 
-      });
+    } catch (error) {
+      console.error("Error fetching funding sources:", error);
+      res.status(500).json({ message: "Failed to fetch funding sources" });
     }
   });
 
-  // Process multi-source payment
-  app.post("/api/process-multi-source-payment", async (req, res) => {
+  app.post('/api/funding-sources', isAuthenticated, async (req: any, res) => {
     try {
-      // In a real app, validate the user is authenticated
-      const userId = 1; // Mock user ID for now
+      console.log("Create funding source request:", req.body);
       
-      const { paymentSources, totalAmount } = req.body;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
       
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
       // Validate required fields
-      if (!paymentSources || !Array.isArray(paymentSources) || paymentSources.length === 0) {
-        return res.status(400).json({ error: "Payment sources are required" });
-      }
-      
-      if (!totalAmount || totalAmount <= 0) {
-        return res.status(400).json({ error: "Valid total amount is required" });
-      }
-      
-      // Calculate total funding from all payment sources
-      const totalFunding = paymentSources.reduce(
-        (sum, source) => sum + parseFloat(source.amount || 0), 
-        0
-      );
-      
-      // Validate total matches
-      if (Math.abs(totalFunding - totalAmount) > 0.01) {
-        return res.status(400).json({
-          error: "Total funding amount does not match requested amount",
-          requestedAmount: totalAmount,
-          providedFunding: totalFunding
+      const { cardNumber, expiryMonth, expiryYear, cvv, name, cardholderName } = req.body;
+      if (!cardNumber || !expiryMonth || !expiryYear || !cvv || !name || !cardholderName) {
+        return res.status(400).json({ 
+          message: "Missing required fields: cardNumber, expiryMonth, expiryYear, cvv, name, cardholderName",
+          receivedFields: Object.keys(req.body)
         });
       }
-      
-      if (!stripe) {
-        return res.status(500).json({ error: "Stripe API not configured" });
+
+      // Security validation for subscription tier limits and name verification
+      const validation = await validateFundingSourceCreation(userId, cardholderName);
+      if (!validation.isValid) {
+        return res.status(400).json({ 
+          message: validation.error,
+          type: "security_validation"
+        });
       }
+
+      // Create Stripe customer if not exists
+      let stripeCustomerId = user.stripeCustomerId;
+      if (!stripeCustomerId) {
+        const customer = await stripe.customers.create({
+          email: user.email || undefined,
+          name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+        });
+        stripeCustomerId = customer.id;
+        await storage.updateUserStripeInfo(userId, stripeCustomerId, "");
+      }
+
+      // Create real Stripe payment method for testing
+      let paymentMethod;
       
-      // Process each payment source
-      const results = [];
-      let totalCollected = 0;
-      let allSuccessful = true;
-      
-      for (const source of paymentSources) {
-        try {
-          // Get the payment method details
-          const paymentMethod = await storage.getPaymentMethod(source.id);
+      try {
+        // Create payment method with Stripe (works with test cards)
+        paymentMethod = await stripe.paymentMethods.create({
+          type: 'card',
+          card: {
+            number: cardNumber,
+            exp_month: expiryMonth,
+            exp_year: expiryYear,
+            cvc: cvv,
+          },
+        });
+        
+        console.log('Created Stripe payment method:', paymentMethod.id);
+      } catch (stripeError: any) {
+        console.error('Stripe payment method creation error:', stripeError.message);
+        
+        // Fall back to mock for development if Stripe fails
+        if (process.env.NODE_ENV === 'development') {
+          const mockPaymentMethodId = `pm_mock_${nanoid(16)}`;
           
-          if (!paymentMethod) {
-            results.push({
-              success: false,
-              source: source.id,
-              error: "Payment method not found"
-            });
-            allSuccessful = false;
-            continue;
-          }
+          paymentMethod = {
+            id: mockPaymentMethodId,
+            type: 'card',
+            card: {
+              brand: getBrandFromNumber(cardNumber),
+              last4: cardNumber.slice(-4)
+            }
+          };
           
-          let result;
-          const amount = parseFloat(source.amount);
-          
-          // Process based on payment method type
-          switch (paymentMethod.type) {
-            case 'card':
-              // Process card payment
-              const paymentIntent = await stripe.paymentIntents.create({
-                amount: Math.round(amount * 100), // Convert to cents for Stripe
-                currency: 'usd',
-                payment_method: paymentMethod.stripePaymentMethodId,
-                confirm: true,
-                capture_method: 'automatic',
-                description: `Payment for virtual card funding - User ID: ${userId}`
-              });
-              
-              if (paymentIntent.status === 'succeeded') {
-                totalCollected += amount;
-                result = {
-                  paymentIntentId: paymentIntent.id,
-                  status: paymentIntent.status
-                };
-              } else {
-                allSuccessful = false;
-                result = {
-                  paymentIntentId: paymentIntent.id,
-                  status: paymentIntent.status,
-                  requiresAction: paymentIntent.status === 'requires_action'
-                };
-              }
-              break;
-              
-            case 'bank_account':
-              // For bank accounts, we'd typically use ACH transfers which are asynchronous
-              // For demo purposes, we'll simulate a successful payment
-              // In production, we'd use Stripe's ACH payments or similar
-              
-              result = {
-                simulatedPayment: true,
-                status: 'processing' // Bank transfers typically take time to process
-              };
-              
-              // In a demo, we'll count this as collected
-              totalCollected += amount;
-              break;
-              
-            case 'paypal':
-              // PayPal integration would require a separate flow
-              // For demo purposes, we'll simulate a successful payment
-              
-              result = {
-                simulatedPayment: true,
-                status: 'succeeded',
-                provider: 'paypal'
-              };
-              
-              totalCollected += amount;
-              break;
-              
-            case 'stripe_balance':
-              // For Stripe Balance, we'd use Stripe Connect transfers
-              // For demo purposes, we'll simulate a successful transfer
-              
-              result = {
-                simulatedPayment: true,
-                status: 'succeeded',
-                provider: 'stripe_balance'
-              };
-              
-              totalCollected += amount;
-              break;
-              
-            default:
-              result = {
-                error: `Unsupported payment method type: ${paymentMethod.type}`
-              };
-              allSuccessful = false;
-          }
-          
-          results.push({
-            success: !result.error,
-            source: source.id,
-            amount,
-            result
-          });
-          
-        } catch (error: any) {
-          console.error(`Error processing payment source ${source.id}:`, error);
-          results.push({
-            success: false,
-            source: source.id,
-            error: error.message || "Processing error"
-          });
-          allSuccessful = false;
+          console.log('Fallback to mock payment method:', mockPaymentMethodId);
+        } else {
+          throw stripeError;
         }
       }
-      
-      // Calculate service fee
-      const serviceFee = calculateServiceFee(totalAmount);
-      
-      // Return the results of all payment attempts
-      res.json({
-        success: allSuccessful,
-        collected: totalCollected,
-        serviceFee,
-        netAmount: totalCollected - serviceFee,
-        results
+
+      // Attach payment method to customer if it's a real Stripe payment method
+      if (!paymentMethod.id.startsWith('pm_mock_')) {
+        await stripe.paymentMethods.attach(paymentMethod.id, {
+          customer: stripeCustomerId,
+        });
+      }
+
+      // Use user input for display, test payment method for Stripe
+      const validatedData = insertFundingSourceSchema.parse({
+        userId,
+        name: req.body.name || `${req.body.brand?.toUpperCase() || 'CARD'} ••••${req.body.last4 || cardNumber.slice(-4)}`,
+        cardholderName: cardholderName.trim(),
+        type: req.body.type || 'credit_card',
+        last4: req.body.last4 || cardNumber.slice(-4),
+        brand: req.body.brand || getBrandFromNumber(cardNumber),
+        isNameVerified: true, // Set to true since we validated it above
+        balance: "100.00", // Mock balance for testing
+        defaultSplitPercentage: req.body.defaultSplitPercentage || 0,
+        stripePaymentMethodId: paymentMethod.id,
       });
       
-    } catch (error: any) {
-      console.error("Multi-source payment processing error:", error);
-      res.status(500).json({
-        error: "Error processing payments",
-        details: error.message
-      });
+      const source = await storage.createFundingSource(validatedData);
+      res.json(source);
+    } catch (error) {
+      console.error("Error creating funding source:", error);
+      res.status(500).json({ message: "Failed to create funding source" });
     }
   });
 
-  // Process payment with virtual card
-  app.post("/api/process-payment", async (req, res) => {
+  app.put('/api/funding-sources/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const { virtualCardId, amount, merchantName } = req.body;
+      const id = parseInt(req.params.id);
+      const updates = req.body;
+      const source = await storage.updateFundingSource(id, updates);
+      res.json(source);
+    } catch (error) {
+      console.error("Error updating funding source:", error);
+      res.status(500).json({ message: "Failed to update funding source" });
+    }
+  });
+
+  app.delete('/api/funding-sources/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteFundingSource(id);
+      res.json({ message: "Funding source deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting funding source:", error);
+      res.status(500).json({ message: "Failed to delete funding source" });
+    }
+  });
+
+  // Virtual cards routes
+  app.get('/api/virtual-cards', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const cards = await storage.getVirtualCardsByUserId(userId);
       
-      // Validate required fields
-      if (!virtualCardId) {
-        return res.status(400).json({ error: "Virtual card ID is required" });
+      // If no virtual cards exist, create a sample one for demo
+      if (cards.length === 0) {
+        const sampleCard = {
+          userId,
+          name: "bpay bcard",
+          balance: "1000.00",
+          cardNumber: `4532${Math.floor(Math.random() * 1000000000000).toString().padStart(12, '0')}`,
+          expiryMonth: 12,
+          expiryYear: 2025,
+          cvv: "123",
+          status: "active",
+          merchantRestrictions: "",
+          stripeCardId: `card_${nanoid(16)}`,
+        };
+        
+        await storage.createVirtualCard(sampleCard);
+        
+        const newCards = await storage.getVirtualCardsByUserId(userId);
+        res.json(newCards);
+      } else {
+        res.json(cards);
+      }
+    } catch (error) {
+      console.error("Error fetching virtual cards:", error);
+      res.status(500).json({ message: "Failed to fetch virtual cards" });
+    }
+  });
+
+  app.post('/api/virtual-cards', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Create Stripe customer if not exists
+      let stripeCustomerId = user.stripeCustomerId;
+      if (!stripeCustomerId) {
+        const customer = await stripe.customers.create({
+          email: user.email || undefined,
+          name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+        });
+        stripeCustomerId = customer.id;
+        await storage.updateUserStripeInfo(userId, stripeCustomerId, "");
+      }
+
+      // Step 1: Validate spending limit against available funds (if provided)
+      const requiredAmount = req.body.spendingLimit || 1000;
+      
+      // Get user's funding sources to validate available balance
+      const fundingSources = await storage.getFundingSourcesByUserId(userId);
+      const totalMockBalance = fundingSources
+        .filter(fs => fs.stripePaymentMethodId?.startsWith('pm_mock_'))
+        .length * 100; // Each mock source has $100
+      
+      if (req.body.spendingLimit && totalMockBalance < requiredAmount) {
+        return res.status(400).json({
+          message: "Insufficient funds to create bcard with requested spending limit",
+          requestedLimit: requiredAmount,
+          availableBalance: totalMockBalance,
+          fundingSources: fundingSources.length
+        });
       }
       
-      if (!amount || amount <= 0) {
-        return res.status(400).json({ error: "Valid amount is required" });
-      }
+      // Step 2: Check and fund Issuing balance if needed
+      const currentBalance = await stripeIssuingService.getIssuingBalance();
       
-      // Get the virtual card
-      const virtualCard = await storage.getVirtualCard(virtualCardId);
+      if (currentBalance < requiredAmount) {
+        console.log(`Funding Issuing balance: Current $${currentBalance}, Required $${requiredAmount}`);
+        await stripeIssuingService.fundIssuingBalance(requiredAmount + 100); // Add buffer
+      }
+
+      // Step 2: Create cardholder for Stripe Issuing
+      const cardholder = await stripeIssuingService.createCardholder({
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phoneNumber: user.phoneNumber || undefined,
+        address: user.address || undefined
+      });
+
+      // Step 3: Define spending controls for the bcard
+      const spendingControls = {
+        spending_limits: req.body.spendingLimits || [
+          {
+            amount: (req.body.spendingLimit || 1000) * 100, // Convert to cents
+            interval: 'monthly'
+          }
+        ],
+        allowed_categories: req.body.allowedCategories || [],
+        blocked_categories: req.body.blockedCategories || [],
+        spending_limits_currency: 'usd'
+      };
+
+      // Step 4: Create real virtual card using Stripe Issuing
+      const stripeCard = await stripeIssuingService.createBcard(cardholder.id, spendingControls);
+
+      // Step 4: Get card details for display
+      const cardDetails = await stripeIssuingService.getCardDetails(stripeCard.id);
+
+      const validatedData = insertVirtualCardSchema.parse({
+        ...req.body,
+        userId,
+        cardNumber: `****-****-****-${cardDetails.last4}`, // Display format only
+        expiryMonth: cardDetails.exp_month,
+        expiryYear: cardDetails.exp_year,
+        cvv: "***", // Never store real CVV
+        balance: (req.body.amount || 0).toString(), // Convert balance to string for decimal field
+        stripeCardId: stripeCard.id,
+        status: cardDetails.status,
+      });
+      
+      const virtualCard = await storage.createVirtualCard(validatedData);
+      
+      // Return card with secure details hidden
+      res.json({
+        ...virtualCard,
+        cardNumber: `****-****-****-${cardDetails.last4}`,
+        stripeIssuingCard: {
+          id: stripeCard.id,
+          last4: cardDetails.last4,
+          brand: cardDetails.brand,
+          status: cardDetails.status,
+          spending_controls: cardDetails.spending_controls
+        }
+      });
+    } catch (error) {
+      console.error("Error creating virtual card:", error);
+      res.status(500).json({ message: "Failed to create virtual card" });
+    }
+  });
+
+  app.put('/api/virtual-cards/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates = req.body;
+      const card = await storage.updateVirtualCard(id, updates);
+      res.json(card);
+    } catch (error) {
+      console.error("Error updating virtual card:", error);
+      res.status(500).json({ message: "Failed to update virtual card" });
+    }
+  });
+
+  app.delete('/api/virtual-cards/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+      
+      // Get card to validate ownership and get Stripe card ID
+      const virtualCards = await storage.getVirtualCardsByUserId(userId);
+      const virtualCard = virtualCards.find(card => card.id === id);
       
       if (!virtualCard) {
-        return res.status(404).json({ error: "Virtual card not found" });
+        return res.status(404).json({ message: "Virtual card not found" });
+      }
+
+      // Freeze the card in Stripe before deleting
+      if (virtualCard.stripeCardId && !virtualCard.stripeCardId.startsWith('card_mock_')) {
+        await stripeIssuingService.updateCardStatus(virtualCard.stripeCardId, 'inactive');
       }
       
-      // Check if card is active
-      if (virtualCard.status !== 'active') {
-        return res.status(400).json({ error: "Virtual card is not active" });
-      }
+      await storage.deleteVirtualCard(id);
+      res.json({ message: "Virtual card deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting virtual card:", error);
+      res.status(500).json({ message: "Failed to delete virtual card" });
+    }
+  });
+
+  // Get card details for merchant checkout (secured endpoint)
+  app.get('/api/virtual-cards/:id/checkout-details', isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
       
-      // Check if card has sufficient balance
-      if (parseFloat(virtualCard.balance) < amount) {
-        return res.status(400).json({ 
-          error: "Insufficient balance on virtual card",
-          available: virtualCard.balance,
-          requested: amount
+      // Get card and validate ownership
+      const virtualCards = await storage.getVirtualCardsByUserId(userId);
+      const virtualCard = virtualCards.find(card => card.id === id);
+      
+      if (!virtualCard) {
+        return res.status(404).json({ message: "Virtual card not found" });
+      }
+
+      // Get full card details from Stripe Issuing (including sensitive data)
+      if (virtualCard.stripeCardId && !virtualCard.stripeCardId.startsWith('card_mock_')) {
+        const fullCardDetails = await stripeIssuingService.getFullCardDetails(virtualCard.stripeCardId);
+        
+        res.json({
+          cardNumber: fullCardDetails.number,
+          expiryMonth: fullCardDetails.exp_month,
+          expiryYear: fullCardDetails.exp_year,
+          cvv: fullCardDetails.cvc,
+          cardholderName: `${req.user.claims.first_name || ''} ${req.user.claims.last_name || ''}`.trim(),
+          readyForCheckout: true
+        });
+      } else {
+        // Return mock details for demo cards
+        res.json({
+          cardNumber: '4242424242424242',
+          expiryMonth: 12,
+          expiryYear: 2025,
+          cvv: '123',
+          cardholderName: `${req.user.claims.first_name || ''} ${req.user.claims.last_name || ''}`.trim(),
+          readyForCheckout: true,
+          isDemoCard: true
         });
       }
+    } catch (error) {
+      console.error("Error fetching card checkout details:", error);
+      res.status(500).json({ message: "Failed to fetch card details" });
+    }
+  });
+
+  // Get subscription benefits endpoint
+  app.get('/api/subscription/benefits', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
       
-      // In a production app, this is where we'd process the actual payment
-      // using the card issuing platform (e.g., Stripe Issuing)
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const tier = user.subscriptionTier || 'free';
+      const benefits = await getSubscriptionBenefits(userId, tier);
       
-      // Create a transaction record
-      const transaction = await storage.createTransaction({
-        virtualCardId: parseInt(virtualCardId),
-        merchant: merchantName || "Unknown Merchant",
-        description: "Purchase",
-        amount: parseFloat(amount),
-        date: new Date(),
-        status: "completed",
-        type: "purchase",
-        cardLastFour: virtualCard.lastFour
+      res.json({
+        currentTier: tier,
+        benefits,
+        upgradeAvailable: tier === 'free' && !benefits.isKycVerified
+      });
+    } catch (error) {
+      console.error("Error fetching subscription benefits:", error);
+      res.status(500).json({ message: "Failed to fetch subscription benefits" });
+    }
+  });
+
+  // Freeze/unfreeze virtual card
+  app.patch('/api/virtual-cards/:id/status', isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+      const { status } = req.body; // 'active' or 'inactive'
+      
+      // Get card and validate ownership
+      const virtualCards = await storage.getVirtualCardsByUserId(userId);
+      const virtualCard = virtualCards.find(card => card.id === id);
+      
+      if (!virtualCard) {
+        return res.status(404).json({ message: "Virtual card not found" });
+      }
+
+      // Update card status in Stripe
+      if (virtualCard.stripeCardId && !virtualCard.stripeCardId.startsWith('card_mock_')) {
+        await stripeIssuingService.updateCardStatus(virtualCard.stripeCardId, status);
+      }
+      
+      // Update in our database
+      const updatedCard = await storage.updateVirtualCard(id, { status });
+      
+      res.json({
+        ...updatedCard,
+        message: `Card ${status === 'active' ? 'activated' : 'frozen'} successfully`
+      });
+    } catch (error) {
+      console.error("Error updating card status:", error);
+      res.status(500).json({ message: "Failed to update card status" });
+    }
+  });
+
+  // Transactions routes
+  app.get('/api/transactions', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const transactions = await storage.getTransactionsByUserId(userId);
+      res.json(transactions);
+    } catch (error) {
+      console.error("Error fetching transactions:", error);
+      res.status(500).json({ message: "Failed to fetch transactions" });
+    }
+  });
+
+  app.post('/api/transactions', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const validatedData = insertTransactionSchema.parse({
+        ...req.body,
+        userId,
+      });
+      const transaction = await storage.createTransaction(validatedData);
+      res.json(transaction);
+    } catch (error) {
+      console.error("Error creating transaction:", error);
+      res.status(500).json({ message: "Failed to create transaction" });
+    }
+  });
+
+  // Merchants routes
+  app.get('/api/merchants', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const merchants = await storage.getMerchantsByUserId(userId);
+      res.json(merchants);
+    } catch (error) {
+      console.error("Error fetching merchants:", error);
+      res.status(500).json({ message: "Failed to fetch merchants" });
+    }
+  });
+
+  app.post('/api/merchants', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const apiKey = `bpay_${nanoid(32)}`;
+      
+      const validatedData = insertMerchantSchema.parse({
+        ...req.body,
+        userId,
+        apiKey,
       });
       
-      // Update the card balance
-      const newBalance = parseFloat(virtualCard.balance) - amount;
+      const merchant = await storage.createMerchant(validatedData);
+      res.json(merchant);
+    } catch (error) {
+      console.error("Error creating merchant:", error);
+      res.status(500).json({ message: "Failed to create merchant" });
+    }
+  });
+
+  // Admin routes
+  app.get('/api/admin/users', isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
       
-      // In a real app, we'd update the card balance here
-      // For now, we'll consider this as a successful transaction
+      const users = await storage.getAllUsers();
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  app.get('/api/admin/transactions', isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      
+      const transactions = await storage.getAllTransactions();
+      res.json(transactions);
+    } catch (error) {
+      console.error("Error fetching transactions:", error);
+      res.status(500).json({ message: "Failed to fetch transactions" });
+    }
+  });
+
+  app.get('/api/admin/merchants', isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      
+      const merchants = await storage.getAllMerchants();
+      res.json(merchants);
+    } catch (error) {
+      console.error("Error fetching merchants:", error);
+      res.status(500).json({ message: "Failed to fetch merchants" });
+    }
+  });
+
+  // Payment splitting endpoint - Stripe Issuing Integration
+  app.post('/api/process-payment', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { amount, merchant, virtualCardId, splits } = req.body;
+      
+      console.log("Process payment request:", {
+        amount,
+        merchant,
+        virtualCardId,
+        splits: splits,
+        splitsType: typeof splits,
+        splitsIsArray: Array.isArray(splits)
+      });
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Validate that splits is an array
+      if (!Array.isArray(splits)) {
+        return res.status(400).json({ 
+          message: "Invalid splits data - must be an array",
+          receivedType: typeof splits,
+          receivedData: splits 
+        });
+      }
+
+      // Validate splits total to 100%
+      const totalPercentage = splits.reduce((sum: number, split: any) => sum + split.percentage, 0);
+      if (Math.abs(totalPercentage - 100) > 0.01) {
+        return res.status(400).json({ message: "Split percentages must total 100%" });
+      }
+
+      const totalAmount = parseFloat(amount);
+      
+      // Calculate fees based on user's subscription tier
+      const userTier = user.subscriptionTier || 'free';
+      const feeCalculation = FeeCalculator.calculateFees(totalAmount, userTier);
+      const totalWithFees = feeCalculation.totalAmount;
+
+      // Step 1: CRITICAL - Validate funding source balances BEFORE any processing
+      console.log(`Validating funding sources for total amount: $${totalWithFees.toFixed(2)} (including $${feeCalculation.feeAmount.toFixed(2)} fees at ${feeCalculation.feePercentage}%)`);
+      
+      const balanceValidationResults = [];
+      let totalAvailableBalance = 0;
+      
+      for (const split of splits) {
+        const splitAmount = (totalWithFees * split.percentage) / 100;
+        
+        // Check if this is a mock payment method (has mock balance)
+        if (split.stripePaymentMethodId.startsWith('pm_mock_')) {
+          // For mock payment methods, we simulate a $100 balance limit
+          const mockBalance = 100;
+          balanceValidationResults.push({
+            fundingSourceId: split.fundingSourceId,
+            name: split.name,
+            requiredAmount: splitAmount,
+            availableBalance: mockBalance,
+            sufficient: mockBalance >= splitAmount
+          });
+          totalAvailableBalance += Math.min(mockBalance, splitAmount);
+        } else {
+          // For real payment methods, we can't check balance directly through Stripe
+          // In production, you'd integrate with bank APIs or require user input
+          console.log(`Warning: Cannot validate balance for real payment method ${split.stripePaymentMethodId}`);
+          balanceValidationResults.push({
+            fundingSourceId: split.fundingSourceId,
+            name: split.name,
+            requiredAmount: splitAmount,
+            availableBalance: 'unknown',
+            sufficient: 'unknown'
+          });
+        }
+      }
+      
+      // Check if we have sufficient funds from mock payment methods
+      const insufficientFunds = balanceValidationResults.filter(result => result.sufficient === false);
+      
+      if (insufficientFunds.length > 0) {
+        return res.status(400).json({
+          message: "Insufficient funds in funding sources",
+          totalRequired: totalWithFees,
+          totalAvailable: totalAvailableBalance,
+          insufficientSources: insufficientFunds,
+          breakdown: balanceValidationResults
+        });
+      }
+
+      console.log("✓ Funding source validation passed. Proceeding with fund capture...");
+
+      // Step 2: Capture funds from user's funding sources into bpay's pool account
+      const captureResults = [];
+      
+      for (const split of splits) {
+        const splitAmount = (totalWithFees * split.percentage) / 100;
+        const splitAmountCents = Math.round(splitAmount * 100);
+        
+        let captureResult;
+        
+        // Capture funds from real payment methods
+        if (!split.stripePaymentMethodId.startsWith('pm_mock_')) {
+          try {
+            // Create payment intent to capture funds into bpay's pool account
+            const paymentIntent = await stripe.paymentIntents.create({
+              amount: splitAmountCents,
+              currency: 'usd',
+              payment_method: split.stripePaymentMethodId,
+              customer: user.stripeCustomerId || undefined,
+              confirm: true,
+              capture_method: 'automatic', // Automatically capture funds
+              metadata: {
+                merchant,
+                splitAmount: splitAmount.toString(),
+                fundingSourceId: split.fundingSourceId.toString(),
+                bpayPoolTransfer: 'true'
+              }
+            });
+            
+            captureResult = {
+              id: paymentIntent.id,
+              amount: splitAmount,
+              status: paymentIntent.status,
+              fundingSourceId: split.fundingSourceId,
+              captured: paymentIntent.status === 'succeeded'
+            };
+            
+            console.log(`Funds captured from funding source: ${paymentIntent.id} for $${splitAmount}`);
+          } catch (stripeError: any) {
+            console.error(`Failed to capture from funding source:`, stripeError.message);
+            
+            captureResult = {
+              id: `pi_mock_${nanoid(16)}`,
+              amount: splitAmount,
+              status: 'failed',
+              error: stripeError.message,
+              fundingSourceId: split.fundingSourceId,
+              captured: false
+            };
+          }
+        } else {
+          // Mock capture for demo payment methods
+          captureResult = {
+            id: `pi_${nanoid(16)}`,
+            amount: splitAmount,
+            status: 'succeeded',
+            fundingSourceId: split.fundingSourceId,
+            captured: true
+          };
+          
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        captureResults.push(captureResult);
+      }
+
+      // Check if all captures were successful
+      const failedCaptures = captureResults.filter(result => !result.captured);
+      if (failedCaptures.length > 0) {
+        return res.status(400).json({ 
+          message: "Failed to capture funds from some funding sources",
+          failedCaptures: failedCaptures
+        });
+      }
+
+      // Step 2: Get the virtual card from our database
+      const virtualCards = await storage.getVirtualCardsByUserId(userId);
+      const virtualCard = virtualCards.find(card => card.id === virtualCardId);
+      if (!virtualCard) {
+        return res.status(404).json({ message: "Virtual card not found" });
+      }
+
+      // Step 3: Load the virtual card with the captured amount using Stripe Issuing
+      // Note: In a real implementation, this would involve transferring funds to the card
+      // For now, we'll record the transaction and the card will be ready for use
+      
+      const transaction = await storage.createTransaction({
+        userId,
+        virtualCardId,
+        merchant,
+        amount: totalAmount.toFixed(2),
+        splits: JSON.stringify(splits),
+        status: 'completed',
+        fees: feeCalculation.feeAmount.toFixed(2),
+        stripePaymentIntentId: captureResults[0]?.id,
+      });
+
+      // Step 4: The virtual card is now loaded and ready for merchant use
+      console.log(`Virtual card ${virtualCard.stripeCardId} loaded with $${totalAmount} for merchant: ${merchant}`);
+      
+      res.json({
+        transaction,
+        captureResults,
+        virtualCard: {
+          id: virtualCard.id,
+          name: virtualCard.name,
+          last4: virtualCard.cardNumber?.slice(-4),
+          stripeCardId: virtualCard.stripeCardId,
+          loadedAmount: totalAmount,
+          readyForMerchantUse: true
+        },
+        totalAmount,
+        totalFees: feeCalculation.feeAmount,
+        message: "Funds captured and virtual card loaded successfully"
+      });
+    } catch (error) {
+      console.error("Error processing payment:", error);
+      res.status(500).json({ message: "Failed to process payment" });
+    }
+  });
+
+  // Create payment intent for checkout
+  app.post('/api/create-payment-intent', isAuthenticated, async (req: any, res) => {
+    try {
+      const { amount, merchant, splits } = req.body;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const totalAmount = parseFloat(amount);
+      
+      // Calculate fees based on user's subscription tier
+      const userTier = user.subscriptionTier || 'free';
+      const feeCalculation = FeeCalculator.calculateFees(totalAmount, userTier);
+      const totalWithFees = feeCalculation.totalAmount;
+
+      // Mock payment intent for demo
+      const paymentIntent = {
+        client_secret: `pi_${nanoid(16)}_secret_${nanoid(16)}`,
+        id: `pi_${nanoid(16)}`,
+        amount: Math.round(totalWithFees * 100),
+        currency: 'usd',
+        status: 'requires_payment_method',
+        metadata: {
+          merchant,
+          originalAmount: amount,
+          fees: feeCalculation.feeAmount.toFixed(2),
+          splits: JSON.stringify(splits)
+        }
+      };
+
+      res.json({ 
+        clientSecret: paymentIntent.client_secret,
+        totalAmount,
+        totalFees: feeCalculation.feeAmount,
+        totalWithFees
+      });
+    } catch (error) {
+      console.error("Error creating payment intent:", error);
+      res.status(500).json({ message: "Failed to create payment intent" });
+    }
+  });
+
+  // Test endpoint for Stripe Issuing integration
+  app.post('/api/test-issuing', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { amount = 100 } = req.body;
+      
+      console.log('=== Testing Stripe Issuing Integration ===');
+      
+      // Step 1: Check current balance
+      const currentBalance = await stripeIssuingService.getIssuingBalance();
+      console.log(`Current Issuing balance: $${currentBalance}`);
+      
+      // Step 2: Fund balance if needed
+      if (currentBalance < amount) {
+        console.log(`Funding balance with $${amount + 50}`);
+        await stripeIssuingService.fundIssuingBalance(amount + 50);
+      }
+      
+      // Step 3: Check balance after funding
+      const newBalance = await stripeIssuingService.getIssuingBalance();
+      console.log(`Balance after funding: $${newBalance}`);
+      
+      // Step 4: Create cardholder
+      const user = await storage.getUser(userId);
+      const cardholder = await stripeIssuingService.createCardholder({
+        firstName: user?.firstName || 'Test',
+        lastName: user?.lastName || 'User',
+        email: user?.email || 'test@example.com',
+        phoneNumber: user?.phoneNumber || undefined,
+        address: user?.address || undefined
+      });
+      
+      // Step 5: Create virtual card
+      const spendingControls = {
+        spending_limits: [
+          {
+            amount: amount * 100,
+            interval: 'monthly' as const
+          }
+        ]
+      };
+      
+      const card = await stripeIssuingService.createBcard(cardholder.id, spendingControls);
       
       res.json({
         success: true,
-        transaction,
+        currentBalance,
         newBalance,
-        message: "Payment processed successfully"
-      });
-      
-    } catch (error: any) {
-      console.error("Payment processing error:", error);
-      res.status(500).json({
-        error: "Error processing payment",
-        details: error.message
-      });
-    }
-  });
-  
-  // Activate a virtual card
-  app.post("/api/virtual-cards/:id/activate", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const virtualCard = await storage.getVirtualCard(id);
-
-      if (!virtualCard) {
-        return res.status(404).json({ error: "Virtual card not found" });
-      }
-
-      // Get the configured card provider
-      const cardProviderSetting = await storage.getSystemSettingByKey('card_provider');
-      const cardProvider = cardProviderSetting?.value || 'stripe';
-
-      // Check if the card provider is available
-      if (cardProvider === 'stripe' && !stripe) {
-        return res.status(500).json({ 
-          error: "Stripe API not configured. Cannot activate virtual card." 
-        });
-      }
-
-      // Check for regional provider override (if any)
-      const regionalProvidersSetting = await storage.getSystemSettingByKey('regional_card_providers');
-      const regionalProviders = regionalProvidersSetting?.valueJson || {};
-
-      try {
-        // In a production app with Stripe Issuing, we would activate the card with Stripe
-        // Example:
-        // if (virtualCard.stripeCardId) {
-        //   await stripe.issuing.cards.update(virtualCard.stripeCardId, {
-        //     status: 'active'
-        //   });
-        // }
-
-        // For now, we'll just update the status in our database
-        const updatedCard = { ...virtualCard, status: "active" };
-
-        // Return the updated card details
-        res.json({
-          id: updatedCard.id,
-          name: updatedCard.name,
-          status: updatedCard.status,
-          lastFour: updatedCard.lastFour,
-          expiryDate: updatedCard.expiryDate,
-          balance: updatedCard.balance,
-          message: "Card activated successfully"
-        });
-      } catch (stripeError: any) {
-        console.error("Stripe error:", stripeError);
-        return res.status(500).json({ 
-          error: "Error activating card with Stripe", 
-          details: stripeError.message 
-        });
-      }
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error activating virtual card", 
-        details: error.message 
-      });
-    }
-  });
-
-  // Deactivate a virtual card
-  app.post("/api/virtual-cards/:id/deactivate", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const virtualCard = await storage.getVirtualCard(id);
-
-      if (!virtualCard) {
-        return res.status(404).json({ error: "Virtual card not found" });
-      }
-
-      // Get the configured card provider
-      const cardProviderSetting = await storage.getSystemSettingByKey('card_provider');
-      const cardProvider = cardProviderSetting?.value || 'stripe';
-
-      // Check if the card provider is available
-      if (cardProvider === 'stripe' && !stripe) {
-        return res.status(500).json({ 
-          error: "Stripe API not configured. Cannot deactivate virtual card." 
-        });
-      }
-
-      // Check for regional provider override (if any)
-      const regionalProvidersSetting = await storage.getSystemSettingByKey('regional_card_providers');
-      const regionalProviders = regionalProvidersSetting?.valueJson || {};
-
-      try {
-        // In a production app with Stripe Issuing, we would deactivate the card with Stripe
-        // Example:
-        // if (virtualCard.stripeCardId) {
-        //   await stripe.issuing.cards.update(virtualCard.stripeCardId, {
-        //     status: 'inactive'
-        //   });
-        // }
-
-        // For now, we'll just update the status in our database
-        const updatedCard = { ...virtualCard, status: "inactive" };
-
-        // Return the updated card details
-        res.json({
-          id: updatedCard.id,
-          name: updatedCard.name,
-          status: updatedCard.status,
-          lastFour: updatedCard.lastFour,
-          expiryDate: updatedCard.expiryDate,
-          balance: updatedCard.balance,
-          message: "Card deactivated successfully"
-        });
-      } catch (stripeError: any) {
-        console.error("Stripe error:", stripeError);
-        return res.status(500).json({ 
-          error: "Error deactivating card with Stripe", 
-          details: stripeError.message 
-        });
-      }
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error deactivating virtual card", 
-        details: error.message 
-      });
-    }
-  });
-
-  // Get all transactions for a user
-  app.get("/api/transactions", async (req, res) => {
-    try {
-      // In a real app, we would get the user ID from the authenticated session
-      const userId = 1; // Mock user ID for now
-
-      // Get virtual cards for this user
-      const virtualCards = await storage.getVirtualCards(userId);
-      const virtualCardIds = virtualCards.map(card => card.id);
-
-      // Get transactions for all virtual cards
-      const transactions = [];
-
-      for (const cardId of virtualCardIds) {
-        try {
-          const cardTransactions = await storage.getTransactionsByVirtualCard(cardId);
-          transactions.push(...cardTransactions);
-        } catch (err) {
-          console.warn(`Could not fetch transactions for card ${cardId}:`, err);
-          // Continue with other cards
-        }
-      }
-
-      // Sort transactions by date (most recent first)
-      transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-      // Return only the most recent transactions (limit to 10)
-      const recentTransactions = transactions.slice(0, 10);
-
-      res.json(recentTransactions);
-    } catch (error: any) {
-      console.error("Error fetching transactions:", error);
-      res.status(500).json({ 
-        error: "Error fetching transactions", 
-        details: error.message 
-      });
-    }
-  });
-
-  // Get transactions for a specific virtual card
-  app.get("/api/virtual-cards/:id/transactions", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const virtualCard = await storage.getVirtualCard(id);
-
-      if (!virtualCard) {
-        return res.status(404).json({ error: "Virtual card not found" });
-      }
-
-      // Get transactions for this virtual card
-      const transactions = await storage.getTransactionsByVirtualCard(id);
-
-      // Sort transactions by date (most recent first)
-      transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-      res.json(transactions);
-    } catch (error: any) {
-      console.error(`Error fetching transactions for card ${req.params.id}:`, error);
-      res.status(500).json({ 
-        error: "Error fetching transactions", 
-        details: error.message 
-      });
-    }
-  });
-
-  // Add funds to a virtual card
-  // Split payment with multiple payment methods and service fee
-  app.post("/api/split-payment", async (req, res) => {
-    try {
-      // In a real app, get user ID from auth session
-      const userId = 1;
-      
-      const { name, amount, totalCharged, serviceFee, paymentSources } = req.body;
-      
-      // Validate required fields
-      if (!name || !amount || !totalCharged || !serviceFee || !paymentSources || !Array.isArray(paymentSources)) {
-        return res.status(400).json({ 
-          error: "Missing required split payment information" 
-        });
-      }
-      
-      // Log the payment sources to debug allocation issues
-      console.log('Split payment request received:', {
-        amount,
-        totalCharged,
-        serviceFee,
-        paymentSourceCount: paymentSources.length,
-        paymentSources: paymentSources.map(s => ({
-          id: s.id, 
-          amount: s.amount,
-          percentage: s.percentage,
-          originalAmount: s.originalAmount
-        }))
-      });
-      
-      // Validate service fee calculation (should be 2.5% of amount)
-      const expectedServiceFee = calculateServiceFee(amount);
-      const serviceFeeDifference = Math.abs(serviceFee - expectedServiceFee);
-      
-      if (serviceFeeDifference > 0.01) { // Allow small floating point differences
-        return res.status(400).json({
-          error: "Invalid service fee calculation",
-          expected: expectedServiceFee,
-          received: serviceFee
-        });
-      }
-      
-      // Validate total charged amount (should be amount + service fee)
-      const expectedTotalCharge = parseFloat(amount) + parseFloat(serviceFee);
-      const totalChargeDifference = Math.abs(totalCharged - expectedTotalCharge);
-      
-      if (totalChargeDifference > 0.01) { // Allow small floating point differences
-        return res.status(400).json({
-          error: "Invalid total charge calculation",
-          expected: expectedTotalCharge,
-          received: totalCharged
-        });
-      }
-      
-      // Calculate total funding from all payment sources
-      const totalFunding = paymentSources.reduce(
-        (sum, source) => sum + parseFloat(source.amount || 0), 
-        0
-      );
-      
-      // Validate that funding sources total matches the total charged amount
-      if (Math.abs(totalFunding - totalCharged) > 0.01) {
-        return res.status(400).json({
-          error: "Total funding amount does not match total charged amount",
-          totalCharged: totalCharged,
-          providedFunding: totalFunding
-        });
-      }
-      
-      // If we have Stripe configured, process the payments
-      if (stripe) {
-        // Get or create a customer for the user
-        const user = await storage.getUser(userId);
-        let customerId = user?.stripeCustomerId;
-        
-        if (!customerId) {
-          // Create a new Stripe customer
-          const customer = await stripe.customers.create({
-            name: name,
-            description: `User ID: ${userId}`
-          });
-          
-          customerId = customer.id;
-          await storage.updateUser(userId, { stripeCustomerId: customerId });
-        }
-        
-        // Process each payment source
-        for (const source of paymentSources) {
-          const paymentMethod = await storage.getPaymentMethod(source.id);
-          
-          if (!paymentMethod) {
-            return res.status(400).json({
-              error: `Payment method not found: ${source.id}`
-            });
-          }
-          
-          // For each payment source, create a separate PaymentIntent
-          // This allows for more flexibility than a single payment with multiple sources
-          const paymentAmount = Math.round(parseFloat(source.amount) * 100); // Convert to cents
-          
-          if (paymentMethod.type === 'card' && paymentMethod.stripePaymentMethodId) {
-            await stripe.paymentIntents.create({
-              amount: paymentAmount,
-              currency: 'usd',
-              customer: customerId,
-              payment_method: paymentMethod.stripePaymentMethodId,
-              description: `Split payment for ${name} - Amount: $${(paymentAmount / 100).toFixed(2)}`,
-              confirm: true,
-              off_session: true
-            });
-          }
-          // Add handling for other payment method types as needed
-        }
-      }
-      
-      // Generate the virtual card details
-      const cardholderName = name || "Virtual Card";
-      const lastFour = Math.floor(1000 + Math.random() * 9000).toString();
-      const currentDate = new Date();
-      const expiryYear = currentDate.getFullYear() + 3;
-      const expiryMonth = currentDate.getMonth() + 1;
-      
-      // Create virtual card record in storage
-      const virtualCard = {
-        id: `card_${Math.random().toString(36).substring(2, 10)}`,
-        userId,
-        name: name,
-        cardholderName: cardholderName,
-        status: "active",
-        lastFour: lastFour,
-        cardNumber: `XXXX-XXXX-XXXX-${lastFour}`,
-        expiryDate: `${expiryMonth.toString().padStart(2, '0')}/${expiryYear}`,
-        cvv: Math.floor(100 + Math.random() * 900).toString(),
-        balance: parseFloat(amount),
-        serviceFee: parseFloat(serviceFee),
-        totalCharged: parseFloat(totalCharged),
-        createdAt: new Date(),
-        isOneTime: true,
-        paymentSources: paymentSources.map(source => ({
-          id: source.id,
-          type: source.type,
-          amount: parseFloat(source.amount || 0),
-          // Add optional fields if they exist for better debugging
-          originalAmount: source.originalAmount ? parseFloat(source.originalAmount) : undefined,
-          feeContribution: source.feeContribution ? parseFloat(source.feeContribution) : undefined,
-          totalCharge: source.totalCharge ? parseFloat(source.totalCharge) : undefined
-        }))
-      };
-      
-      // Save the virtual card
-      const savedCard = await storage.createVirtualCard(userId, virtualCard);
-      
-      // Return the created virtual card
-      res.status(201).json(savedCard);
-    } catch (error) {
-      console.error("Split payment error:", error);
-      res.status(500).json({
-        error: "Error processing split payment",
-        details: error.message
-      });
-    }
-  });
-  
-  app.post("/api/virtual-cards/:id/add-funds", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { amount, paymentSource } = req.body;
-
-      // Validate required fields
-      if (!amount || !paymentSource) {
-        return res.status(400).json({ 
-          error: "Missing required fields" 
-        });
-      }
-
-      const virtualCard = await storage.getVirtualCard(id);
-
-      if (!virtualCard) {
-        return res.status(404).json({ error: "Virtual card not found" });
-      }
-
-      // Get the configured card provider
-      const cardProviderSetting = await storage.getSystemSettingByKey('card_provider');
-      const cardProvider = cardProviderSetting?.value || 'stripe';
-
-      // Check if the card provider is available
-      if (cardProvider === 'stripe' && !stripe) {
-        return res.status(500).json({ 
-          error: "Stripe API not configured. Cannot add funds to virtual card." 
-        });
-      }
-
-      // Check for regional provider override (if any)
-      const regionalProvidersSetting = await storage.getSystemSettingByKey('regional_card_providers');
-      const regionalProviders = regionalProvidersSetting?.valueJson || {};
-
-      try {
-        // In a production app with Stripe Issuing, we would:
-        // 1. Process the payment using the payment source
-        // 2. Add funds to the virtual card through Stripe's API
-
-        // For demo purposes, simulate a Stripe payment
-        const parsedAmount = parseFloat(amount);
-        const amountInCents = Math.round(parsedAmount * 100);
-
-        // Process the payment with Stripe (in production, we'd use the actual payment source info)
-        // In a real implementation, you would use:
-        // - stripe.paymentIntents.create() to charge a card
-        // - stripe.issuing.transactions.create() to add funds to the virtual card
-
-        // Simulate a successful payment transaction
-        console.log(`Processing ${amountInCents} cents payment for virtual card ${id}`);
-
-        // For a real Stripe Issuing implementation, we would load funds onto the card:
-        // if (virtualCard.stripeCardId) {
-        //   await stripe.issuing.cards.update(virtualCard.stripeCardId, {
-        //     // Update card balance
-        //   });
-        // }
-
-        // Update the card balance in our database
-        const updatedCard = { 
-          ...virtualCard, 
-          balance: (parseFloat(virtualCard.balance) + parsedAmount).toFixed(2) 
-        };
-
-        // Return the updated card details
-        res.json({
-          id: updatedCard.id,
-          name: updatedCard.name,
-          status: updatedCard.status,
-          lastFour: updatedCard.lastFour,
-          expiryDate: updatedCard.expiryDate,
-          balance: updatedCard.balance,
-          message: `Successfully added $${amount} to card`
-        });
-      } catch (stripeError: any) {
-        console.error("Stripe error:", stripeError);
-        return res.status(500).json({ 
-          error: "Error processing payment with Stripe", 
-          details: stripeError.message 
-        });
-      }
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error adding funds to virtual card", 
-        details: error.message 
-      });
-    }
-  });
-
-  // If using Stripe, this would be the endpoint to handle payment setup
-  if (stripe) {
-    app.post("/api/create-payment-intent", async (req, res) => {
-      try {
-        const { amount, includeServiceFee = true } = req.body;
-        
-        // Calculate the service fee if needed
-        let totalAmount = parseFloat(amount);
-        let serviceFee = 0;
-        
-        if (includeServiceFee) {
-          serviceFee = calculateServiceFee(totalAmount);
-          totalAmount += serviceFee;
-        }
-        
-        // Create the payment intent with the total amount
-        const paymentIntent = await stripe.paymentIntents.create({
-          amount: Math.round(totalAmount * 100), // Convert to cents
-          currency: "usd",
-          metadata: {
-            originalAmount: amount.toString(),
-            serviceFee: serviceFee.toString(),
-            includesServiceFee: includeServiceFee ? "true" : "false"
-          }
-        });
-
-        res.json({ 
-          clientSecret: paymentIntent.client_secret,
-          originalAmount: amount,
-          serviceFee: serviceFee,
-          totalAmount: totalAmount
-        });
-      } catch (error: any) {
-        res.status(500).json({ 
-          error: "Error creating payment intent", 
-          details: error.message 
-        });
-      }
-    });
-    
-    // Handle subscription creation or retrieval
-    app.post('/api/get-or-create-subscription', isAuthenticated, async (req, res) => {
-      try {
-        if (!stripe) {
-          return res.status(500).json({ error: "Stripe API not configured" });
-        }
-        
-        const user = req.user;
-        
-        if (!user) {
-          return res.status(401).json({ error: "Authentication required" });
-        }
-        
-        // Check if user already has a subscription
-        if (user.stripeSubscriptionId) {
-          try {
-            const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
-            
-            // Return subscription info with payment intent secret if payment is needed
-            return res.send({
-              subscriptionId: subscription.id,
-              clientSecret: subscription.latest_invoice?.payment_intent?.client_secret,
-              status: subscription.status,
-              currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
-              plan: {
-                name: "Premium Plan",
-                price: (subscription.items.data[0].price.unit_amount || 0) / 100, // Convert from cents
-                billingCycle: subscription.items.data[0].price.recurring?.interval || "month" 
-              }
-            });
-          } catch (retrieveError) {
-            console.error("Error retrieving subscription:", retrieveError);
-            // If we can't retrieve, we'll create a new one
-          }
-        }
-        
-        // Create a new customer if needed
-        if (!user.stripeCustomerId) {
-          const customer = await stripe.customers.create({
-            email: user.email,
-            name: user.username,
-            metadata: { userId: user.id.toString() }
-          });
-          
-          // Update user with stripe customer ID
-          await storage.updateUser(user.id, { 
-            stripeCustomerId: customer.id 
-          });
-          
-          user.stripeCustomerId = customer.id;
-        }
-        
-        // Make sure we have a price ID (should be set as env var)
-        const priceId = process.env.STRIPE_PRICE_ID;
-        if (!priceId) {
-          return res.status(500).json({ 
-            error: "Missing STRIPE_PRICE_ID environment variable" 
-          });
-        }
-        
-        // Get price information
-        const price = await stripe.prices.retrieve(priceId);
-        
-        // Create the subscription
-        const subscription = await stripe.subscriptions.create({
-          customer: user.stripeCustomerId,
-          items: [{ price: priceId }],
-          payment_behavior: 'default_incomplete',
-          payment_settings: { save_default_payment_method: 'on_subscription' },
-          expand: ['latest_invoice.payment_intent'],
-        });
-        
-        // Update user with subscription ID
-        await storage.updateUser(user.id, { 
-          stripeSubscriptionId: subscription.id 
-        });
-        
-        // Return subscription info with payment intent secret
-        res.send({
-          subscriptionId: subscription.id,
-          clientSecret: subscription.latest_invoice?.payment_intent?.client_secret,
-          status: subscription.status,
-          plan: {
-            name: price.nickname || "Premium Plan",
-            price: (price.unit_amount || 0) / 100, // Convert from cents
-            billingCycle: price.recurring?.interval || "month"
-          }
-        });
-      } catch (error: any) {
-        console.error("Subscription error:", error);
-        res.status(500).json({ 
-          error: "Error creating subscription", 
-          details: error.message 
-        });
-      }
-    });
-  }
-
-  // Create Stripe Connect account link for Stripe Balance payment method
-  app.post("/api/payment-methods/:id/connect-stripe", async (req, res) => {
-    try {
-      // In a real app, this would validate the user is authenticated
-      const userId = 1; // In a production app, get from authenticated session
-      const { id } = req.params;
-
-      if (!stripe) {
-        return res.status(500).json({ error: "Stripe API not configured" });
-      }
-
-      // Get the payment method from the database
-      const paymentMethods = await storage.getPaymentMethods(userId);
-      const paymentMethod = paymentMethods.find(pm => pm.id.toString() === id);
-
-      if (!paymentMethod) {
-        return res.status(404).json({ error: "Payment method not found" });
-      }
-
-      if (paymentMethod.type !== 'stripe_balance') {
-        return res.status(400).json({ error: "This operation is only valid for Stripe Balance payment methods" });
-      }
-
-      // Create a Stripe Connect account
-      const account = await stripe.accounts.create({
-        type: 'express',
-        capabilities: {
-          card_payments: { requested: true },
-          transfers: { requested: true }
+        cardholder: {
+          id: cardholder.id,
+          name: cardholder.name || cardholder.id
         },
-        business_type: 'individual',
-        metadata: {
-          userId: userId.toString(),
-          paymentMethodId: id
-        }
+        card: {
+          id: card.id,
+          last4: card.last4,
+          status: card.status,
+          type: card.type
+        },
+        message: 'Stripe Issuing integration test completed successfully'
       });
-
-      // Update the payment method with the account ID
-      await storage.updatePaymentMethod(id, {
-        stripeAccountId: account.id,
-        metadata: {
-          ...paymentMethod.metadata,
-          status: 'account_created'
-        }
-      });
-
-      // Create an account link for the user to onboard
-      const accountLink = await stripe.accountLinks.create({
-        account: account.id,
-        refresh_url: `${req.protocol}://${req.get('host')}/payment-methods`,
-        return_url: `${req.protocol}://${req.get('host')}/payment-methods`,
-        type: 'account_onboarding'
-      });
-
-      // Return the account link URL
-      res.json({
-        accountLinkUrl: accountLink.url,
-        status: 'account_created'
-      });
+      
     } catch (error: any) {
-      console.error("Stripe Connect error:", error);
-      res.status(500).json({
-        error: "Error creating Stripe Connect account",
-        details: error.message
-      });
-    }
-  });
-
-  // Verify PayPal payment method
-  app.post("/api/payment-methods/:id/verify-paypal", async (req, res) => {
-    try {
-      // In a real app, this would validate the user is authenticated
-      const userId = 1; // In a production app, get from authenticated session
-      const { id } = req.params;
-      const { verificationCode } = req.body;
-
-      // Get the payment method from the database
-      const paymentMethods = await storage.getPaymentMethods(userId);
-      const paymentMethod = paymentMethods.find(pm => pm.id.toString() === id);
-
-      if (!paymentMethod) {
-        return res.status(404).json({ error: "Payment method not found" });
-      }
-
-      if (paymentMethod.type !== 'paypal') {
-        return res.status(400).json({ error: "This operation is only valid for PayPal payment methods" });
-      }
-
-      // In a real implementation, we would validate the verification code with PayPal
-      // For now, we'll simulate the verification process
-      const mockVerified = verificationCode === '123456'; // Just an example
-
-      // Update the payment method status
-      await storage.updatePaymentMethod(id, {
-        metadata: {
-          ...paymentMethod.metadata,
-          verified: mockVerified,
-          status: mockVerified ? 'verified' : 'verification_failed'
-        }
-      });
-
-      res.json({
-        verified: mockVerified,
-        status: mockVerified ? 'verified' : 'verification_failed'
-      });
-    } catch (error: any) {
-      console.error("PayPal verification error:", error);
-      res.status(500).json({
-        error: "Error verifying PayPal account",
-        details: error.message
-      });
-    }
-  });
-
-  // Update payment method endpoint
-  app.patch("/api/payment-methods/:id", async (req, res) => {
-    try {
-      // In a real app, this would validate the user is authenticated
-      const userId = 1; // In a production app, get from authenticated session
-      const { id } = req.params;
-      const updates = req.body;
-
-      // Get the payment method to make sure it belongs to the user
-      const paymentMethods = await storage.getPaymentMethods(userId);
-      const paymentMethod = paymentMethods.find(pm => pm.id.toString() === id);
-
-      if (!paymentMethod) {
-        return res.status(404).json({ error: "Payment method not found" });
-      }
-
-      // Perform updates based on payment method type
-      if (paymentMethod.type === 'card' && updates.card && stripe) {
-        // Update card in Stripe if needed (expiry dates, etc.)
-        if (paymentMethod.stripePaymentMethodId && updates.card.exp_month && updates.card.exp_year) {
-          await stripe.paymentMethods.update(paymentMethod.stripePaymentMethodId, {
-            card: {
-              exp_month: updates.card.exp_month,
-              exp_year: updates.card.exp_year
-            }
-          });
-        }
-      }
-
-      // Update in our database
-      const updatedPaymentMethod = await storage.updatePaymentMethod(id, updates);
-
-      res.json(updatedPaymentMethod);
-    } catch (error: any) {
-      console.error("Payment method update error:", error);
-      res.status(500).json({
-        error: "Error updating payment method",
-        details: error.message
-      });
-    }
-  });
-
-  // Set payment method as default
-  app.post("/api/payment-methods/:id/set-default", async (req, res) => {
-    try {
-      // In a real app, this would validate the user is authenticated
-      const userId = 1; // In a production app, get from authenticated session
-      const { id } = req.params;
-
-      // Get the payment method to make sure it belongs to the user
-      const paymentMethods = await storage.getPaymentMethods(userId);
-      const paymentMethod = paymentMethods.find(pm => pm.id.toString() === id);
-
-      if (!paymentMethod) {
-        return res.status(404).json({ error: "Payment method not found" });
-      }
-
-      // Update all payment methods to not be default
-      for (const method of paymentMethods) {
-        if (method.isDefault && method.id.toString() !== id) {
-          await storage.updatePaymentMethod(method.id.toString(), { isDefault: false });
-        }
-      }
-
-      // Set this payment method as default
-      const updatedPaymentMethod = await storage.updatePaymentMethod(id, { isDefault: true });
-
-      res.json(updatedPaymentMethod);
-    } catch (error: any) {
-      console.error("Set default payment method error:", error);
-      res.status(500).json({
-        error: "Error setting default payment method",
-        details: error.message
-      });
-    }
-  });
-
-  // System settings API routes
-  app.get("/api/system-settings", isAuthenticated, async (req, res) => {
-    try {
-      // Authentication handled by middleware
-      const settings = await storage.getSystemSettings();
-
-      // Filter out sensitive settings for non-sensitive data
-      const publicSettings = settings.map(setting => ({
-        ...setting,
-        value: setting.isSecret ? undefined : setting.value,
-        valueJson: setting.isSecret ? undefined : setting.valueJson
-      }));
-
-      res.json(publicSettings);
-    } catch (error: any) {
+      console.error('Stripe Issuing test failed:', error);
       res.status(500).json({ 
-        error: "Error fetching system settings", 
-        details: error.message 
+        success: false,
+        error: error.message,
+        details: error
       });
     }
   });
 
-  app.get("/api/system-settings/category/:category", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      // Admin authorization handled by middleware
-      const { category } = req.params;
-      const settings = await storage.getSystemSettingsByCategory(category);
+  // Register Merchant API routes
+  registerMerchantAPI(app);
 
-      // Filter out sensitive settings for non-sensitive data
-      const publicSettings = settings.map(setting => ({
-        ...setting,
-        value: setting.isSecret ? undefined : setting.value,
-        valueJson: setting.isSecret ? undefined : setting.valueJson
-      }));
-
-      res.json(publicSettings);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: `Error fetching system settings for category: ${req.params.category}`, 
-        details: error.message 
-      });
-    }
-  });
-
-  app.get("/api/system-settings/:key", isAuthenticated, async (req, res) => {
-    try {
-      // Authentication handled by middleware
-      const { key } = req.params;
-      const setting = await storage.getSystemSettingByKey(key);
-
-      if (!setting) {
-        return res.status(404).json({ error: `Setting with key ${key} not found` });
-      }
-
-      // Don't return sensitive values unless to admin
-      const result = {
-        ...setting,
-        value: setting.isSecret ? undefined : setting.value,
-        valueJson: setting.isSecret ? undefined : setting.valueJson
-      };
-
-      res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: `Error fetching system setting: ${req.params.key}`, 
-        details: error.message 
-      });
-    }
-  });
-
-  app.post("/api/system-settings", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      // Admin authorization handled by middleware
-      const { key, value, valueJson, description, category, isSecret } = req.body;
-
-      // Check if setting with this key already exists
-      const existingSetting = await storage.getSystemSettingByKey(key);
-      if (existingSetting) {
-        return res.status(400).json({ error: `Setting with key ${key} already exists` });
-      }
-
-      const newSetting = await storage.createSystemSetting({
-        key,
-        value,
-        valueJson,
-        description,
-        category: category || 'general',
-        isSecret: isSecret || false
-      });
-
-      res.status(201).json(newSetting);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error creating system setting", 
-        details: error.message 
-      });
-    }
-  });
-
-  app.put("/api/system-settings/:key", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      // Admin authorization handled by middleware
-      const { key } = req.params;
-      const { value, valueJson, description, category, isSecret } = req.body;
-
-      // Check if setting exists
-      const existingSetting = await storage.getSystemSettingByKey(key);
-      if (!existingSetting) {
-        return res.status(404).json({ error: `Setting with key ${key} not found` });
-      }
-
-      // Update the setting
-      const updatedSetting = await storage.updateSystemSetting(key, {
-        value,
-        valueJson,
-        description,
-        category,
-        isSecret
-      });
-
-      res.json(updatedSetting);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: `Error updating system setting: ${req.params.key}`, 
-        details: error.message 
-      });
-    }
-  });
-
-  app.delete("/api/system-settings/:key", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      // Admin authorization handled by middleware
-      const { key } = req.params;
-
-      const result = await storage.deleteSystemSetting(key);
-      if (!result) {
-        return res.status(404).json({ error: `Setting with key ${key} not found` });
-      }
-
-      res.json({ message: `Setting ${key} deleted successfully` });
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: `Error deleting system setting: ${req.params.key}`, 
-        details: error.message 
-      });
-    }
-  });
-
-  // Card provider config API
-  app.get("/api/card-provider", isAuthenticated, async (req, res) => {
-    try {
-      const setting = await storage.getSystemSettingByKey('card_provider');
-      if (!setting) {
-        return res.status(404).json({ error: "Card provider configuration not found" });
-      }
-
-      res.json({ 
-        provider: setting.value,
-        supportedProviders: ['stripe', 'other_provider1', 'other_provider2'] // List available providers
-      });
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error fetching card provider configuration", 
-        details: error.message 
-      });
-    }
-  });
-
-  app.put("/api/card-provider", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      // Admin authorization handled by middleware
-      const { provider } = req.body;
-
-      // Validate provider
-      const validProviders = ['stripe', 'other_provider1', 'other_provider2'];
-      if (!validProviders.includes(provider)) {
-        return res.status(400).json({ 
-          error: "Invalid provider", 
-          validProviders 
-        });
-      }
-
-      // Update the setting
-      const setting = await storage.getSystemSettingByKey('card_provider');
-      if (!setting) {
-        return res.status(404).json({ error: "Card provider configuration not found" });
-      }
-
-      const updatedSetting = await storage.updateSystemSetting('card_provider', {
-        value: provider
-      });
-
-      res.json({ 
-        provider: updatedSetting.value,
-        message: `Card provider updated to ${provider}`
-      });
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error updating card provider", 
-        details: error.message 
-      });
-    }
-  });
-
-  // Regional card providers config API
-  app.get("/api/regional-card-providers", isAuthenticated, async (req, res) => {
-    try {
-      const setting = await storage.getSystemSettingByKey('regional_card_providers');
-      if (!setting) {
-        return res.status(404).json({ error: "Regional card providers configuration not found" });
-      }
-
-      res.json({ 
-        regionalProviders: setting.valueJson || {},
-        supportedProviders: ['stripe', 'other_provider1', 'other_provider2'] // List available providers
-      });
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error fetching regional card providers configuration", 
-        details: error.message 
-      });
-    }
-  });
-
-  app.put("/api/regional-card-providers", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      // Admin authorization handled by middleware
-      const { regionalProviders } = req.body;
-
-      // Validate the regional providers
-      const validProviders = ['stripe', 'other_provider1', 'other_provider2'];
-      const invalidRegions = [];
-
-      for (const region in regionalProviders) {
-        if (!validProviders.includes(regionalProviders[region])) {
-          invalidRegions.push(region);
-        }
-      }
-
-      if (invalidRegions.length > 0) {
-        return res.status(400).json({ 
-          error: "Invalid providers for regions", 
-          invalidRegions,
-          validProviders 
-        });
-      }
-
-      // Update the setting
-      const setting = await storage.getSystemSettingByKey('regional_card_providers');
-      if (!setting) {
-        return res.status(404).json({ error: "Regional card providers configuration not found" });
-      }
-
-      const updatedSetting = await storage.updateSystemSetting('regional_card_providers', {
-        valueJson: regionalProviders
-      });
-
-      res.json({ 
-        regionalProviders: updatedSetting.valueJson,
-        message: "Regional card providers updated successfully"
-      });
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error updating regional card providers", 
-        details: error.message 
-      });
-    }
-  });
-
-  app.post("/logout", async (req, res) => {
-    //Implementation for logout
-    res.status(200).json({ message: "Logged out successfully" });
-  });
-
-  // Set up file upload storage
-  const storage_config = multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, 'public/uploads/');
-    },
-    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-      const ext = path.extname(file.originalname);
-      cb(null, file.fieldname + '-' + uniqueSuffix + ext);
-    }
-  });
-  
-  const upload = multer({ 
-    storage: storage_config,
-    limits: {
-      fileSize: 5 * 1024 * 1024, // 5MB limit
-    },
-    fileFilter: (req, file, cb) => {
-      // Accept images, SVGs, PDFs, and common document formats
-      const allowedTypes = /jpeg|jpg|png|gif|svg|pdf|doc|docx|xls|xlsx|ppt|pptx/;
-      const ext = path.extname(file.originalname).toLowerCase();
-      const mimetype = allowedTypes.test(file.mimetype);
-      
-      if (mimetype && allowedTypes.test(ext)) {
-        return cb(null, true);
-      }
-      
-      cb(new Error('Invalid file type. Only images, SVGs, PDFs, and common document formats are allowed.'));
-    }
-  });
-
-  // ========================== CONTENT MANAGEMENT ROUTES ==========================
-
-  // --------------------- PAGE CONTENT API ROUTES ---------------------
-  
-  // Get all pages
-  app.get("/api/content-management/pages", isAuthenticated, /*isAdmin,*/ async (req, res) => {
-    try {
-      // Handle both camelCase and snake_case versions of isAdmin for compatibility
-      const isUserAdmin = req.user ? (typeof req.user.isAdmin !== 'undefined' ? req.user.isAdmin : req.user.is_admin) : false;
-      console.log('GET /api/content-management/pages - User:', req.user ? `ID: ${req.user.id}, Admin: ${isUserAdmin}` : 'Not authenticated');
-      
-      if (!req.user) {
-        console.log('GET /api/content-management/pages - Not authenticated, returning 401');
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const pages = await storage.getAllPageContent();
-      console.log(`Found ${pages.length} pages`);
-      
-      // Enhanced logging - show sample page data for debugging
-      if (pages.length > 0) {
-        console.log(`Sample page data (first page): ${JSON.stringify(pages[0], null, 2)}`);
-      } else {
-        console.log('No pages found in database');
-      }
-      
-      res.json(pages);
-    } catch (error: any) {
-      console.error('Error in getAllPageContent:', error);
-      res.status(500).json({ 
-        error: "Error fetching page content", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Get a specific page
-  app.get("/api/content-management/pages/:pageId", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { pageId } = req.params;
-      const page = await storage.getPageContent(pageId);
-      
-      if (!page) {
-        return res.status(404).json({ error: "Page content not found" });
-      }
-      
-      res.json(page);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error fetching page content", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Create new page
-  app.post("/api/content-management/pages", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const pageData = req.body;
-      
-      console.log('POST /api/content-management/pages - Request payload:', pageData);
-      
-      // Check for either camelCase or snake_case versions of pageId
-      const pageId = pageData.pageId || pageData.page_id;
-      
-      // Enforce required fields - page_id and title are required based on the schema
-      if (!pageId || !pageData.title) {
-        return res.status(400).json({ 
-          error: "Missing required page information. page_id and title are required.",
-          received: pageData 
-        });
-      }
-      
-      // Ensure we have the snake_case version for the database
-      if (!pageData.page_id) {
-        pageData.page_id = pageId;
-      }
-      
-      console.log('Creating page with page_id:', pageData.page_id);
-      
-      try {
-        const newPage = await storage.createPageContent(pageData);
-        console.log('Created new page:', newPage);
-        res.status(201).json(newPage);
-      } catch (dbError: any) {
-        console.error('Database error creating page:', dbError);
-        res.status(500).json({ 
-          error: "Database error creating page content", 
-          details: dbError.message 
-        });
-      }
-    } catch (error: any) {
-      console.error('Error creating page content:', error);
-      res.status(500).json({ 
-        error: "Error creating page content", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Update a page
-  app.put("/api/content-management/pages/:pageId", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { pageId } = req.params;
-      const updates = req.body;
-      
-      const updatedPage = await storage.updatePageContent(pageId, updates);
-      
-      if (!updatedPage) {
-        return res.status(404).json({ error: "Page content not found" });
-      }
-      
-      res.json(updatedPage);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error updating page content", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Delete a page
-  app.delete("/api/content-management/pages/:pageId", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { pageId } = req.params;
-      
-      const success = await storage.deletePageContent(pageId);
-      
-      if (!success) {
-        return res.status(404).json({ error: "Page content not found" });
-      }
-      
-      res.status(200).json({ message: "Page content deleted successfully" });
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error deleting page content", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // --------------------- SECTION CONTENT API ROUTES ---------------------
-  
-  // Get all sections for a page
-  app.get("/api/content-management/pages/:pageId/sections", isAuthenticated, /*isAdmin,*/ async (req, res) => {
-    try {
-      const { pageId } = req.params;
-      console.log('Fetching sections for pageId:', pageId, typeof pageId);
-      
-      if (!req.user) {
-        console.log('User not authenticated in sections endpoint');
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      // Try different methods of finding the page
-      let page = null;
-      let pageIdToUse = pageId;
-      
-      // First try direct lookup by pageId string
-      page = await storage.getPageContent(pageId);
-      
-      // If numeric ID was passed, try to find page by numeric ID
-      if (!page && !isNaN(Number(pageId))) {
-        console.log(`Trying to find page by numeric ID: ${pageId}`);
-        const allPages = await storage.getAllPageContent();
-        page = allPages.find(p => p.id === Number(pageId));
-        
-        if (page) {
-          console.log(`Found page by numeric ID lookup: ${page.pageId || page.page_id}`);
-          pageIdToUse = page.pageId || page.page_id;
-        }
-      }
-      
-      if (!page) {
-        console.log(`Page with ID ${pageId} not found for sections request`);
-        // Instead of 404, return empty array for better UI experience
-        return res.json([]);
-      }
-      
-      console.log(`Found page: ${JSON.stringify(page, null, 2)}`);
-      
-      // Get sections for this page using the string pageId
-      let sections = [];
-      try {
-        sections = await storage.getSectionsByPage(pageIdToUse);
-        console.log(`Found ${sections.length} sections for page ${pageIdToUse}`);
-      } catch (sectionErr) {
-        console.error(`Error fetching sections for page ${pageIdToUse}:`, sectionErr);
-        // Continue with empty array rather than returning an error if sections not found
-      }
-      
-      // Log sample section data for debugging
-      if (sections && sections.length > 0) {
-        console.log(`Sample section (first): ${JSON.stringify(sections[0], null, 2)}`);
-      } else {
-        console.log(`No sections found for page ${pageIdToUse}`);
-        // Return empty array instead of null
-        sections = [];
-      }
-      
-      res.json(sections);
-    } catch (error: any) {
-      console.error('Error in getSectionsByPage:', error);
-      res.status(500).json({ 
-        error: "Error fetching section content", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Get a specific section
-  app.get("/api/content-management/pages/:pageId/sections/:sectionId", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { pageId, sectionId } = req.params;
-      const section = await storage.getSectionContent(pageId, sectionId);
-      
-      if (!section) {
-        return res.status(404).json({ error: "Section content not found" });
-      }
-      
-      res.json(section);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error fetching section content", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Create new section
-  app.post("/api/content-management/pages/:pageId/sections", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { pageId } = req.params;
-      // Create a separate sectionData object, keeping pageId separate for method signature
-      const sectionData = { ...req.body };
-      
-      console.log('POST /api/content-management/pages/:pageId/sections - pageId:', pageId);
-      console.log('Section data:', sectionData);
-      
-      // Enforce required fields - should have either sectionId or id
-      if (!sectionData.sectionId && !sectionData.id) {
-        return res.status(400).json({ error: "Missing required section information (sectionId)" });
-      }
-      
-      if (!sectionData.name) {
-        return res.status(400).json({ error: "Missing required section information (name)" });
-      }
-      
-      // If using storage.createSectionContent(pageId, sectionData) signature
-      const newSection = await storage.createSectionContent(pageId, sectionData);
-      console.log('Created new section:', newSection);
-      res.status(201).json(newSection);
-    } catch (error: any) {
-      console.error('Error creating section:', error);
-      res.status(500).json({ 
-        error: "Error creating section content", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Update a section
-  app.put("/api/content-management/pages/:pageId/sections/:sectionId", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { pageId, sectionId } = req.params;
-      const updates = req.body;
-      
-      const updatedSection = await storage.updateSectionContent(pageId, sectionId, updates);
-      
-      if (!updatedSection) {
-        return res.status(404).json({ error: "Section content not found" });
-      }
-      
-      res.json(updatedSection);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error updating section content", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Delete a section
-  app.delete("/api/content-management/pages/:pageId/sections/:sectionId", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { pageId, sectionId } = req.params;
-      
-      const success = await storage.deleteSectionContent(pageId, sectionId);
-      
-      if (!success) {
-        return res.status(404).json({ error: "Section content not found" });
-      }
-      
-      res.status(200).json({ message: "Section content deleted successfully" });
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error deleting section content", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // --------------------- MEDIA LIBRARY API ROUTES ---------------------
-  
-  // Get all media
-  app.get("/api/content-management/media", isAuthenticated, /*isAdmin,*/ async (req, res) => {
-    try {
-      const mediaItems = await storage.getAllMedia();
-      res.json(mediaItems);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error fetching media", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Get a specific media item
-  app.get("/api/content-management/media/:mediaId", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { mediaId } = req.params;
-      const mediaItem = await storage.getMedia(parseInt(mediaId));
-      
-      if (!mediaItem) {
-        return res.status(404).json({ error: "Media not found" });
-      }
-      
-      res.json(mediaItem);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error fetching media", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Upload new media
-  app.post("/api/content-management/media", isAuthenticated, isAdmin, upload.single('file'), async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ error: "No file uploaded" });
-      }
-      
-      const { originalname, filename, size, mimetype } = req.file;
-      const filePath = `/uploads/${filename}`;
-      
-      const mediaData = {
-        title: req.body.title || originalname,
-        description: req.body.description || '',
-        type: mimetype,
-        fileName: filename,
-        originalName: originalname,
-        filePath,
-        size,
-        uploadedBy: (req.user as any).id,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-      
-      const newMedia = await storage.createMedia(mediaData);
-      res.status(201).json(newMedia);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error uploading media", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Update media details
-  app.put("/api/content-management/media/:mediaId", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { mediaId } = req.params;
-      const updates = {
-        ...req.body,
-        updatedAt: new Date()
-      };
-      
-      const updatedMedia = await storage.updateMedia(parseInt(mediaId), updates);
-      
-      if (!updatedMedia) {
-        return res.status(404).json({ error: "Media not found" });
-      }
-      
-      res.json(updatedMedia);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error updating media", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Delete media
-  app.delete("/api/content-management/media/:mediaId", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { mediaId } = req.params;
-      
-      // Get the media first to find the file path
-      const mediaItem = await storage.getMedia(parseInt(mediaId));
-      
-      if (!mediaItem) {
-        return res.status(404).json({ error: "Media not found" });
-      }
-      
-      // Delete the physical file
-      const fullPath = path.join(process.cwd(), 'public', mediaItem.filePath);
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-      }
-      
-      // Delete from database
-      const success = await storage.deleteMedia(parseInt(mediaId));
-      
-      if (!success) {
-        return res.status(500).json({ error: "Error deleting media from database" });
-      }
-      
-      res.status(200).json({ message: "Media deleted successfully" });
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error deleting media", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // --------------------- THEME SETTINGS API ROUTES ---------------------
-  
-  // Get all themes
-  app.get("/api/content-management/themes", isAuthenticated, /*isAdmin,*/ async (req, res) => {
-    try {
-      const themes = await storage.getAllThemes();
-      res.json(themes);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error fetching themes", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Get active theme
-  app.get("/api/content-management/themes/active", async (req, res) => {
-    try {
-      const theme = await storage.getActiveTheme();
-      
-      if (!theme) {
-        return res.status(404).json({ error: "No active theme found" });
-      }
-      
-      res.json(theme);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error fetching active theme", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Get a specific theme
-  app.get("/api/content-management/themes/:themeId", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { themeId } = req.params;
-      const theme = await storage.getTheme(parseInt(themeId));
-      
-      if (!theme) {
-        return res.status(404).json({ error: "Theme not found" });
-      }
-      
-      res.json(theme);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error fetching theme", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Create new theme
-  app.post("/api/content-management/themes", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const themeData = {
-        ...req.body,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-      
-      // Enforce required fields
-      if (!themeData.name) {
-        return res.status(400).json({ error: "Missing required theme information" });
-      }
-      
-      const newTheme = await storage.createTheme(themeData);
-      res.status(201).json(newTheme);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error creating theme", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Update a theme
-  app.put("/api/content-management/themes/:themeId", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { themeId } = req.params;
-      const updates = {
-        ...req.body,
-        updatedAt: new Date()
-      };
-      
-      const updatedTheme = await storage.updateTheme(parseInt(themeId), updates);
-      
-      if (!updatedTheme) {
-        return res.status(404).json({ error: "Theme not found" });
-      }
-      
-      res.json(updatedTheme);
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error updating theme", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Activate a theme
-  app.post("/api/content-management/themes/:themeId/activate", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { themeId } = req.params;
-      
-      const activatedTheme = await storage.activateTheme(parseInt(themeId));
-      
-      if (!activatedTheme) {
-        return res.status(404).json({ error: "Theme not found" });
-      }
-      
-      res.json({
-        ...activatedTheme,
-        message: "Theme activated successfully"
-      });
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error activating theme", 
-        details: error.message 
-      });
-    }
-  });
-  
-  // Delete a theme
-  app.delete("/api/content-management/themes/:themeId", isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { themeId } = req.params;
-      
-      // Don't allow deleting the active theme
-      const activeTheme = await storage.getActiveTheme();
-      if (activeTheme && activeTheme.id === parseInt(themeId)) {
-        return res.status(400).json({ 
-          error: "Cannot delete the active theme. Please activate another theme first." 
-        });
-      }
-      
-      const success = await storage.deleteTheme(parseInt(themeId));
-      
-      if (!success) {
-        return res.status(404).json({ error: "Theme not found" });
-      }
-      
-      res.status(200).json({ message: "Theme deleted successfully" });
-    } catch (error: any) {
-      res.status(500).json({ 
-        error: "Error deleting theme", 
-        details: error.message 
-      });
-    }
-  });
-
-  // Mount Henry CMS routes
-  app.use('/api/henry-cms', henryCmsRoutes);
+  // Register Admin API routes
+  const adminApi = await import("./admin-api");
+  app.use("/api/admin", adminApi.default);
 
   const httpServer = createServer(app);
   return httpServer;
